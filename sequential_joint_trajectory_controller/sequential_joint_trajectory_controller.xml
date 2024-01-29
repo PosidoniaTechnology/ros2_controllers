@@ -1,0 +1,8 @@
+<library path="sequential_joint_trajectory_controller">
+  <class name="sequential_joint_trajectory_controller/SequentialJointTrajectoryController"
+         type="sequential_joint_trajectory_controller::SequentialJointTrajectoryController" base_class_type="controller_interface::ControllerInterface">
+  <description>
+    SequentialJointTrajectoryController ros2_control controller.
+  </description>
+  </class>
+</library>
