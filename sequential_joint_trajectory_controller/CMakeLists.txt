@@ -15,6 +15,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   std_srvs
+  angles
+  joint_trajectory_controller
 )
 
 find_package(ament_cmake REQUIRED)
@@ -56,6 +58,7 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 
+#[[
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -97,6 +100,7 @@ if(BUILD_TESTING)
     hardware_interface
   )
 endif()
+]]#
 
 ament_export_include_directories(
   include

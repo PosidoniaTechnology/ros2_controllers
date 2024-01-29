@@ -16,6 +16,10 @@
 
   <depend>control_msgs</depend>
 
+  <depend>joint_trajectory_controller</depend>
+
+  <depend>angles</depend>
+
   <depend>controller_interface</depend>
 
   <depend>hardware_interface</depend>
