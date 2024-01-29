@@ -22,12 +22,6 @@
 
 #include "controller_interface/helpers.hpp"
 
-namespace
-{  // utility
-
-
-}  // namespace
-
 namespace sequential_joint_trajectory_controller
 {
 controller_interface::CallbackReturn SequentialJointTrajectoryController::on_init()
@@ -48,6 +42,11 @@ controller_interface::InterfaceConfiguration SequentialJointTrajectoryController
 
 controller_interface::CallbackReturn SequentialJointTrajectoryController::on_activate(const rclcpp_lifecycle::State& state)
 {
+  TimeData time_data;
+  time_data.time = get_node()->now();
+  time_data.period = rclcpp::Duration::from_nanoseconds(0);
+  time_data.uptime = get_node()->now();
+  time_data_.initRT(time_data);
   return JointTrajectoryController::on_activate(state);
 }
 
@@ -120,23 +119,42 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
   state_current_.time_from_start.set__sec(0);
   read_state_from_state_interfaces(state_current_);
 
+
   // currently carrying out a trajectory
   if (has_active_trajectory()) 
   {
+    TimeData time_data;
+    time_data.time = time;
+    rcl_duration_value_t nsec_period = period.nanoseconds();
+
+    // if tolerance was violated in the previous step, scale by 0.0,
+    // effectively "pausing" the internal clock of the controller for this cycle
+    double scaling_factor;
+    if(tolerance_violated_while_moving_){
+      scaling_factor = 0.0;
+      tolerance_violated_while_moving_ = false;
+    }else{
+      scaling_factor = 1.0;
+    }
+    time_data.period = rclcpp::Duration::from_nanoseconds(scaling_factor * nsec_period);
+    time_data.uptime = time_data_.readFromRT()->uptime + time_data.period;
+    rclcpp::Time traj_time = time_data.uptime;
+    time_data_.writeFromNonRT(time_data);
+
     bool first_sample = false;
     // if sampling the first time, set the point before you sample
     if (!traj_external_point_ptr_->is_sampled_already()) {
       first_sample = true;
       if (params_.open_loop_control) {
-        traj_external_point_ptr_->set_point_before_trajectory_msg(time, last_commanded_state_);
+        traj_external_point_ptr_->set_point_before_trajectory_msg(traj_time, last_commanded_state_);
       } else {
-        traj_external_point_ptr_->set_point_before_trajectory_msg(time, state_current_);
+        traj_external_point_ptr_->set_point_before_trajectory_msg(traj_time, state_current_);
       }
     }
 
     // find segment for current timestamp
     joint_trajectory_controller::TrajectoryPointConstIter start_segment_itr, end_segment_itr;
-    const bool valid_point = traj_external_point_ptr_->sample(time, interpolation_method_, state_desired_,
+    const bool valid_point = traj_external_point_ptr_->sample(traj_time, interpolation_method_, state_desired_,
                                                               start_segment_itr, end_segment_itr);
 
     if (valid_point) {
@@ -149,7 +167,7 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
       // - negative until first point is reached
       // - counting from zero to time_from_start of next point
       double time_difference = time.seconds() - segment_time_from_start.seconds();
-      bool tolerance_violated_while_moving = false;
+
       bool outside_goal_tolerance = false;
       bool within_goal_time = true;
       const bool before_last_point = end_segment_itr != traj_external_point_ptr_->end();
@@ -169,12 +187,15 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
         compute_error_for_joint(state_error_, index, state_current_, state_desired_);
 
         // Always check the state tolerance on the first sample in case the first sample
-        // is the last point
+        // is the last point       
         if ((before_last_point || first_sample) &&
             !check_state_tolerance_per_joint(state_error_, index, default_tolerances_.state_tolerance[index], false) &&
             *(rt_is_holding_.readFromRT()) == false) {
-          tolerance_violated_while_moving = true;
+          tolerance_violated_while_moving_ = true;
+          //RCLCPP_WARN(get_node()->get_logger(), "%s state tolerance violated.", params_.joints[index].c_str());
+          //RCLCPP_WARN(get_node()->get_logger(), "error: %f", state_error_.positions[index]);
         }
+
         // past the final point, check that we end up inside goal tolerance
         if (!before_last_point &&
             !check_state_tolerance_per_joint(state_error_, index, default_tolerances_.goal_state_tolerance[index],
@@ -184,6 +205,10 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
 
           if (default_tolerances_.goal_time_tolerance != 0.0) {
             if (time_difference > default_tolerances_.goal_time_tolerance) {
+              //RCLCPP_WARN(get_node()->get_logger(), "goal time tolerance violated for this segment");
+              //RCLCPP_WARN(get_node()->get_logger(), "Time: %f", time.seconds());
+              //RCLCPP_WARN(get_node()->get_logger(), "Uptime: %f", time_data_.readFromRT()->uptime.seconds());
+              //RCLCPP_WARN(get_node()->get_logger(), "time - segment_time_from_start: %f", time_data_.readFromRT()->uptime.seconds());
               within_goal_time = false;
             }
           }
@@ -191,7 +216,7 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
       }
 
       // set values for next hardware write() if tolerance is met
-      if (!tolerance_violated_while_moving && within_goal_time) {
+      if (within_goal_time) {
         if (use_closed_loop_pid_adapter_) {
           // Update PIDs
           for (auto i = 0ul; i < dof_; ++i) {
@@ -202,22 +227,21 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
         }
 
         // set values for next hardware write()
-        if (has_position_command_interface_) {
+        if (has_position_command_interface_)
           assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
-        }
+
         if (has_velocity_command_interface_) {
-          if (use_closed_loop_pid_adapter_) {
+          if (use_closed_loop_pid_adapter_)
             assign_interface_from_point(joint_command_interface_[1], tmp_command_);
-          } else {
+          else 
             assign_interface_from_point(joint_command_interface_[1], state_desired_.velocities);
-          }
         }
-        if (has_acceleration_command_interface_) {
+        
+        if (has_acceleration_command_interface_)
           assign_interface_from_point(joint_command_interface_[2], state_desired_.accelerations);
-        }
-        if (has_effort_command_interface_) {
+
+        if (has_effort_command_interface_)
           assign_interface_from_point(joint_command_interface_[3], tmp_command_);
-        }
 
         // store the previous command. Used in open-loop control mode
         last_commanded_state_ = state_desired_;
@@ -235,7 +259,8 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
         active_goal->setFeedback(feedback);
 
         // check abort
-        if (tolerance_violated_while_moving) {
+        if (tolerance_violated_while_moving_) {
+          /*
           auto result = std::make_shared<FollowJTrajAction::Result>();
           result->set__error_code(FollowJTrajAction::Result::PATH_TOLERANCE_VIOLATED);
           active_goal->setAborted(result);
@@ -248,6 +273,15 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
 
           traj_msg_external_point_ptr_.reset();
           traj_msg_external_point_ptr_.initRT(set_hold_position());
+
+          int i = 0;
+          for (auto &&position : state_error_.positions){
+            RCLCPP_WARN(get_node()->get_logger(), "Joint%d error: %f", i, position);
+            i++;
+          }
+          */ 
+
+
         } else if (!before_last_point) {
           if (!outside_goal_tolerance) {
             auto res = std::make_shared<FollowJTrajAction::Result>();
@@ -259,6 +293,7 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
             rt_has_pending_goal_.writeFromNonRT(false);
 
             RCLCPP_INFO(get_node()->get_logger(), "Goal reached, success!");
+            RCLCPP_WARN(get_node()->get_logger(), "Execution delay: %.3fs", time.seconds() - time_data_.readFromRT()->uptime.seconds());
 
             traj_msg_external_point_ptr_.reset();
             traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
@@ -278,7 +313,7 @@ controller_interface::return_type SequentialJointTrajectoryController::update(co
             traj_msg_external_point_ptr_.initRT(set_hold_position());
           }
         }
-      } else if (tolerance_violated_while_moving && *(rt_has_pending_goal_.readFromRT()) == false) {
+      } else if (tolerance_violated_while_moving_ && *(rt_has_pending_goal_.readFromRT()) == false) {
         // we need to ensure that there is no pending goal -> we get a race condition otherwise
         RCLCPP_ERROR(get_node()->get_logger(), "Holding position due to state tolerance violation");
 

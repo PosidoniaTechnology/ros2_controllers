@@ -56,8 +56,21 @@ public:
 
 protected:
 
+  struct TimeData
+  {
+    TimeData() : time(0.0), period(rclcpp::Duration::from_nanoseconds(0.0)), uptime(0.0)
+    {
+    }
+    rclcpp::Time time;
+    rclcpp::Duration period;
+    rclcpp::Time uptime;
+  };
+
 private:
 
+  bool tolerance_violated_while_moving_ = false;
+  
+  realtime_tools::RealtimeBuffer<TimeData> time_data_;
   std::shared_ptr<sequential_joint_trajectory_controller::ParamListener> sequential_param_listener_;
   sequential_joint_trajectory_controller::Params sequential_params_;
 };
