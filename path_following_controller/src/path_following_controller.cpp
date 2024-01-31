@@ -17,6 +17,8 @@
 #include "rclcpp_action/server_goal_handle.hpp"
 #include "controller_interface/helpers.hpp"
 
+#include "lifecycle_msgs/msg/state.hpp"
+
 namespace path_following_controller
 {
 PathFollowingController::PathFollowingController() 
@@ -58,7 +60,12 @@ controller_interface::CallbackReturn PathFollowingController::on_init()
 controller_interface::return_type PathFollowingController::update(
   const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
 {
-  
+  if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+  {
+    return controller_interface::return_type::OK;
+  }
+
+
   return controller_interface::return_type::OK;
 }
 
@@ -409,7 +416,7 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
     read_state_from_state_interfaces(last_commanded_state_);
   }
   */
- 
+
   /* TRAJECTORY
   // The controller should start by holding position at the beginning of active state
   add_new_trajectory_msg(set_hold_position());
@@ -470,7 +477,150 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
 
 // UTILS ----------------------------------------
 
+bool PathFollowingController::validate_trajectory_msg(
+  const trajectory_msgs::msg::JointTrajectory & trajectory) const
+{
+  // If partial joints goals are not allowed, goal should specify all controller joints
+  if (!params_.allow_partial_joints_goal)
+  {
+    if (trajectory.joint_names.size() != dof_)
+    {
+      RCLCPP_ERROR(get_node()->get_logger(),
+        "Joints on incoming trajectory don't match the controller joints.");
+      return false;
+    }
+  }
 
+  if (trajectory.joint_names.empty())
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "Empty joint names on incoming trajectory.");
+    return false;
+  }
+
+  const auto trajectory_start_time = static_cast<rclcpp::Time>(trajectory.header.stamp);
+  // If the starting time is set to 0.0, it means the controller should start now.
+  // Otherwise we check if the trajectory ends before the current time,
+  // in which case it can be ignored.
+  if (trajectory_start_time.seconds() != 0.0)
+  {
+    auto trajectory_end_time = trajectory_start_time;
+    for (const auto & p : trajectory.points)
+    {
+      trajectory_end_time += p.time_from_start;
+    }
+    if (trajectory_end_time < get_node()->now())
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Received trajectory with non-zero start time (%f) that ends in the past (%f)",
+        trajectory_start_time.seconds(), trajectory_end_time.seconds());
+      return false;
+    }
+  }
+
+  for (size_t i = 0; i < trajectory.joint_names.size(); ++i)
+  {
+    const std::string & incoming_joint_name = trajectory.joint_names[i];
+
+    auto it = std::find(params_.joints.begin(), params_.joints.end(), incoming_joint_name);
+    if (it == params_.joints.end())
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(), "Incoming joint %s doesn't match the controller's joints.",
+        incoming_joint_name.c_str());
+      return false;
+    }
+  }
+
+  if (!params_.allow_nonzero_velocity_at_trajectory_end)
+  {
+    for (size_t i = 0; i < trajectory.points.back().velocities.size(); ++i)
+    {
+      if (fabs(trajectory.points.back().velocities.at(i)) > std::numeric_limits<float>::epsilon())
+      {
+        RCLCPP_ERROR(
+          get_node()->get_logger(),
+          "Velocity of last trajectory point of joint %s is not zero: %.15f",
+          trajectory.joint_names.at(i).c_str(), trajectory.points.back().velocities.at(i));
+        return false;
+      }
+    }
+  }
+
+  rclcpp::Duration previous_traj_time(0ms);
+  for (size_t i = 0; i < trajectory.points.size(); ++i)
+  {
+    if ((i > 0) && (rclcpp::Duration(trajectory.points[i].time_from_start) <= previous_traj_time))
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Time between points %zu and %zu is not strictly increasing, it is %f and %f respectively",
+        i - 1, i, previous_traj_time.seconds(),
+        rclcpp::Duration(trajectory.points[i].time_from_start).seconds());
+      return false;
+    }
+    previous_traj_time = trajectory.points[i].time_from_start;
+
+    const size_t joint_count = trajectory.joint_names.size();
+    const auto & points = trajectory.points;
+    // This currently supports only position, velocity and acceleration inputs
+    if (
+      !validate_trajectory_point_field(joint_count, points[i].positions, "positions", i, false) ||
+      !validate_trajectory_point_field(joint_count, points[i].velocities, "velocities", i, true) ||
+      !validate_trajectory_point_field(joint_count, points[i].accelerations, "accelerations", i, true))
+    {
+      return false;
+    }
+    // reject effort entries
+    if (!points[i].effort.empty())
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(), "Trajectories with effort fields are currently not supported.");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool PathFollowingController::validate_trajectory_point_field(
+  size_t joint_names_size, const std::vector<double> & vector_field,
+  const std::string & string_for_vector_field, size_t i, bool allow_empty) const
+{
+  if (allow_empty && vector_field.empty())
+  {
+    return true;
+  }
+  if (joint_names_size != vector_field.size())
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Mismatch between joint_names size (%zu) and %s (%zu) at point #%zu.", joint_names_size,
+      string_for_vector_field.c_str(), vector_field.size(), i);
+    return false;
+  }
+  return true;
+}
+
+/*
+void JointTrajectoryController::add_new_trajectory_msg(
+  const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> & traj_msg)
+{
+  traj_msg_external_point_ptr_.writeFromNonRT(traj_msg);
+}
+
+void JointTrajectoryController::preempt_active_goal()
+{
+  const auto active_goal = *rt_active_goal_.readFromNonRT();
+  if (active_goal)
+  {
+    auto action_res = std::make_shared<FollowJTrajAction::Result>();
+    action_res->set__error_code(FollowJTrajAction::Result::INVALID_GOAL);
+    action_res->set__error_string("Current goal cancelled due to new incoming action.");
+    active_goal->setCanceled(action_res);
+    rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+  }
+}
+*/
 bool PathFollowingController::contains_interface_type(
   const std::vector<std::string> & interface_type_list, const std::string & interface_type)
 {

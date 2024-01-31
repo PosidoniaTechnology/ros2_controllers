@@ -40,6 +40,9 @@ using namespace std::chrono_literals;  // NOLINT
 namespace path_following_controller
 {
 
+using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
+
 class PathFollowingController : public controller_interface::ControllerInterface
 {
 public:
@@ -121,8 +124,6 @@ protected:
   bool has_acceleration_command_interface_ = false;
   bool has_effort_command_interface_ = false;
 
-
-  using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
   void read_state_from_state_interfaces(JointTrajectoryPoint & state);
   /** Assign values from the command interfaces as state.
    * This is only possible if command AND state interfaces exist for the same type,
@@ -176,16 +177,24 @@ protected:
   void goal_accepted_callback(
     std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle);
 
+    
 
 private:
-
   // UTILS
+  bool validate_trajectory_msg(const JointTrajectory & trajectory) const;
+  // is the TrajectoryPoint size
+  bool validate_trajectory_point_field(
+  size_t joint_names_size, const std::vector<double> & vector_field,
+  const std::string & string_for_vector_field, size_t i, bool allow_empty) const;
+
+  void add_new_trajectory_msg(
+    const std::shared_ptr<JointTrajectory> & traj_msg);
   bool contains_interface_type(
   const std::vector<std::string> & interface_type_list, const std::string & interface_type);
   void resize_joint_trajectory_point(
-  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
+  JointTrajectoryPoint & point, size_t size);
   void resize_joint_trajectory_point_command(
-  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
+  JointTrajectoryPoint & point, size_t size);
 };
 
 }  // namespace path_following_controller

@@ -33,6 +33,7 @@ add_library(
   path_following_controller
   SHARED
   src/path_following_controller.cpp
+  src/trajectory.cpp
 )
 target_include_directories(path_following_controller PUBLIC
   "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
