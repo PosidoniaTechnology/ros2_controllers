@@ -2,7 +2,7 @@
   <class name="path_following_controller/PathFollowingController"
          type="path_following_controller::PathFollowingController" base_class_type="controller_interface::ControllerInterface">
   <description>
-    PathFollowingController ros2_control controller.
+    Controller for executing joint-space trajectories on a group of joints, ensuring each point of a given trajectory is reached.
   </description>
   </class>
 </library>

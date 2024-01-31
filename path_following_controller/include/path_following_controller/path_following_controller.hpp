@@ -12,34 +12,33 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include "controller_interface/controller_interface.hpp"
-#include "path_following_controller_parameters.hpp"
-#include "path_following_controller/visibility_control.h"
+#include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "realtime_tools/realtime_buffer.h"
 #include "realtime_tools/realtime_publisher.h"
-#include "std_srvs/srv/set_bool.hpp"
+#include "realtime_tools/realtime_server_goal_handle.h"
+#include "rclcpp_action/server.hpp"
+#include "path_following_controller_parameters.hpp"
+#include "path_following_controller/visibility_control.h"
+#include "path_following_controller/tolerances.hpp"
 
-// TODO(anyone): Replace with controller specific messages
-#include "control_msgs/msg/joint_controller_state.hpp"
-#include "control_msgs/msg/joint_jog.hpp"
+#include "trajectory_msgs/msg/joint_trajectory.hpp"
+#include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+#include "control_msgs/msg/joint_trajectory_controller_state.hpp"
+
+#include "std_srvs/srv/set_bool.hpp"
+#include "control_msgs/srv/query_trajectory_state.hpp"
+
+#include "control_msgs/action/follow_joint_trajectory.hpp"
+
+using namespace std::chrono_literals;  // NOLINT
 
 namespace path_following_controller
 {
-// name constants for state interfaces
-static constexpr size_t STATE_MY_ITFS = 0;
-
-// name constants for command interfaces
-static constexpr size_t CMD_MY_ITFS = 0;
-
-// TODO(anyone: example setup for control mode (usually you will use some enums defined in messages)
-enum class control_mode_type : std::uint8_t
-{
-  FAST = 0,
-  SLOW = 1,
-};
 
 class PathFollowingController : public controller_interface::ControllerInterface
 {
@@ -72,33 +71,121 @@ public:
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
-  // TODO(anyone): replace the state and command message types
-  using ControllerReferenceMsg = control_msgs::msg::JointJog;
-  using ControllerModeSrvType = std_srvs::srv::SetBool;
-  using ControllerStateMsg = control_msgs::msg::JointControllerState;
-
 protected:
+  // Degrees of freedom
+  size_t dof_;
+  std::vector<std::string> command_joint_names_;
+
   std::shared_ptr<path_following_controller::ParamListener> param_listener_;
   path_following_controller::Params params_;
 
   std::vector<std::string> state_joints_;
 
-  // Command subscribers and Controller State publisher
-  rclcpp::Subscription<ControllerReferenceMsg>::SharedPtr ref_subscriber_ = nullptr;
-  realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerReferenceMsg>> input_ref_;
+  // Preallocate variables used in the realtime update() function
+  trajectory_msgs::msg::JointTrajectoryPoint state_current_;
+  trajectory_msgs::msg::JointTrajectoryPoint command_current_;
+  trajectory_msgs::msg::JointTrajectoryPoint state_desired_;
+  trajectory_msgs::msg::JointTrajectoryPoint state_error_;
+  trajectory_msgs::msg::JointTrajectoryPoint last_commanded_state_;
 
-  rclcpp::Service<ControllerModeSrvType>::SharedPtr set_slow_control_mode_service_;
-  realtime_tools::RealtimeBuffer<control_mode_type> control_mode_;
+  // Should position errors get wrapped around for i-th joint?
+  std::vector<bool> joints_angle_wraparound_;
 
-  using ControllerStatePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
+  // Tolerances for a given trajectory segment
+  SegmentTolerances default_tolerances_;
 
-  rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
-  std::unique_ptr<ControllerStatePublisher> state_publisher_;
+  // HARDWARE INTERFACES
+
+  // To reduce number of variables and to make the code shorter the interfaces are ordered in types
+  // as the following constants
+  const std::vector<std::string> allowed_interface_types_ = {
+    hardware_interface::HW_IF_POSITION,
+    hardware_interface::HW_IF_VELOCITY,
+    hardware_interface::HW_IF_ACCELERATION,
+    hardware_interface::HW_IF_EFFORT,
+  };
+  // The interfaces are defined as the types in 'allowed_interface_types_' member.
+  // For convenience, for each type the interfaces are ordered so that i-th position
+  // matches i-th index in joint_names_
+  template <typename T>
+  using InterfaceReferences = std::vector<std::vector<std::reference_wrapper<T>>>;
+  InterfaceReferences<hardware_interface::LoanedCommandInterface> joint_command_interface_;
+  InterfaceReferences<hardware_interface::LoanedStateInterface> joint_state_interface_;
+
+  bool has_position_state_interface_ = false;
+  bool has_velocity_state_interface_ = false;
+  bool has_acceleration_state_interface_ = false;
+  //   no effort state interface
+  bool has_position_command_interface_ = false;
+  bool has_velocity_command_interface_ = false;
+  bool has_acceleration_command_interface_ = false;
+  bool has_effort_command_interface_ = false;
+
+
+  using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+  void read_state_from_state_interfaces(JointTrajectoryPoint & state);
+  /** Assign values from the command interfaces as state.
+   * This is only possible if command AND state interfaces exist for the same type,
+   *  therefore needs check for both.
+   * @param[out] state to be filled with values from command interfaces.
+   * @return true if all interfaces exists and contain non-NaN values, false otherwise.
+   */
+  bool read_state_from_command_interfaces(JointTrajectoryPoint & state);
+
+
+  // SUBSCRIBERS
+  bool subscriber_is_active_ = false;
+  rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
+    nullptr;
+  // callback for topic interface
+  void subscriber_callback(const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> msg);
+  
+  // PUBLISHERS
+  using ControllerStateMsg = control_msgs::msg::JointTrajectoryControllerState;
+  rclcpp::Publisher<ControllerStateMsg>::SharedPtr controller_state_publisher_;
+  rclcpp::Duration state_publisher_period_ = rclcpp::Duration(20ms);
+  rclcpp::Time last_state_publish_time_;
+  using RealtimePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
+  std::unique_ptr<RealtimePublisher> rt_publisher_;
+
+  // SERVICES
+  using QueryStateType = control_msgs::srv::QueryTrajectoryState;
+  rclcpp::Service<QueryStateType>::SharedPtr query_state_service_;
+  // service callback
+  void query_state_service(
+    const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
+    std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response);
+
+  // ACTIONS
+  using ActionType = control_msgs::action::FollowJointTrajectory;
+  using RealtimeGoalHandle = realtime_tools::RealtimeServerGoalHandle<ActionType>;
+  using RealtimeGoalHandlePtr = std::shared_ptr<RealtimeGoalHandle>;
+  using RealtimeGoalHandleBuffer = realtime_tools::RealtimeBuffer<RealtimeGoalHandlePtr>;
+
+  rclcpp_action::Server<ActionType>::SharedPtr action_server_;
+  RealtimeGoalHandleBuffer rt_active_goal_;  ///< Currently active action goal, if any.
+  realtime_tools::RealtimeBuffer<bool> rt_has_pending_goal_;  ///< Is there a pending action goal?
+  //rclcpp::TimerBase::SharedPtr goal_handle_timer_;
+  rclcpp::Duration action_monitor_period_ = rclcpp::Duration(50ms);
+
+  // action server callbacks
+  rclcpp_action::GoalResponse goal_received_callback(
+    const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const ActionType::Goal> goal);
+  rclcpp_action::CancelResponse goal_cancelled_callback(
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle);
+  void goal_accepted_callback(
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle);
+
 
 private:
-  // callback for topic interface
-  PATH_FOLLOWING_CONTROLLER__VISIBILITY_LOCAL
-  void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
+
+  // UTILS
+  bool contains_interface_type(
+  const std::vector<std::string> & interface_type_list, const std::string & interface_type);
+  void resize_joint_trajectory_point(
+  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
+  void resize_joint_trajectory_point_command(
+  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
 };
 
 }  // namespace path_following_controller
