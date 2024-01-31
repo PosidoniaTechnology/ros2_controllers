@@ -1,0 +1,8 @@
+<library path="path_following_controller">
+  <class name="path_following_controller/PathFollowingController"
+         type="path_following_controller::PathFollowingController" base_class_type="controller_interface::ControllerInterface">
+  <description>
+    PathFollowingController ros2_control controller.
+  </description>
+  </class>
+</library>
