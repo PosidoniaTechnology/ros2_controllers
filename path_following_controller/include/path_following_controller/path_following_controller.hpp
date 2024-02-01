@@ -25,6 +25,7 @@
 #include "path_following_controller_parameters.hpp"
 #include "path_following_controller/visibility_control.h"
 #include "path_following_controller/tolerances.hpp"
+#include "path_following_controller/trajectory.hpp"
 
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
@@ -83,6 +84,12 @@ protected:
   path_following_controller::Params params_;
 
   std::vector<std::string> state_joints_;
+
+  std::shared_ptr<Trajectory> traj_external_point_ptr_ = nullptr;
+  realtime_tools::RealtimeBuffer<std::shared_ptr<JointTrajectory>>
+    traj_msg_external_point_ptr_;
+
+  std::shared_ptr<JointTrajectory> hold_position_msg_ptr_ = nullptr;
 
   // Preallocate variables used in the realtime update() function
   trajectory_msgs::msg::JointTrajectoryPoint state_current_;
@@ -165,8 +172,8 @@ protected:
 
   rclcpp_action::Server<ActionType>::SharedPtr action_server_;
   RealtimeGoalHandleBuffer rt_active_goal_;  ///< Currently active action goal, if any.
-  realtime_tools::RealtimeBuffer<bool> rt_has_pending_goal_;  ///< Is there a pending action goal?
-  //rclcpp::TimerBase::SharedPtr goal_handle_timer_;
+  realtime_tools::RealtimeBuffer<bool> rt_goal_pending_;  ///< Is there a pending action goal?
+  rclcpp::TimerBase::SharedPtr goal_handle_timer_;
   rclcpp::Duration action_monitor_period_ = rclcpp::Duration(50ms);
 
   // action server callbacks
@@ -181,11 +188,28 @@ protected:
 
 private:
   // UTILS
+  bool has_active_trajectory() const;
   bool validate_trajectory_msg(const JointTrajectory & trajectory) const;
-  // is the TrajectoryPoint size
   bool validate_trajectory_point_field(
-  size_t joint_names_size, const std::vector<double> & vector_field,
-  const std::string & string_for_vector_field, size_t i, bool allow_empty) const;
+    size_t joint_names_size, const std::vector<double> & vector_field,
+    const std::string & string_for_vector_field, size_t i, bool allow_empty) const;
+
+  // fill trajectory_msg so it matches joints controlled by this controller
+  // positions set to current position, velocities, accelerations and efforts to 0.0
+  void fill_partial_goal(
+    std::shared_ptr<JointTrajectory> trajectory_msg) const;
+  // incoming message might have a different joint order, sort it to local one
+  void sort_to_local_joint_order(
+    std::shared_ptr<JointTrajectory> trajectory_msg);
+  void preempt_active_goal();
+
+  void init_hold_position_msg();
+  /** @brief set the current position with zero velocity and acceleration as new command
+   */
+  std::shared_ptr<JointTrajectory> set_hold_position();
+  // True if holding position or repeating last trajectory point in case of success
+  realtime_tools::RealtimeBuffer<bool> rt_is_holding_;
+
 
   void add_new_trajectory_msg(
     const std::shared_ptr<JointTrajectory> & traj_msg);

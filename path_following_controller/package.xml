@@ -15,6 +15,7 @@
 
   <depend>std_srvs</depend>
 
+  <depend>angles</depend>
   <depend>controller_interface</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>

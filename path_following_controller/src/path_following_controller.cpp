@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "angles/angles.h"
 #include "rclcpp_action/create_server.hpp"
 #include "rclcpp_action/server_goal_handle.hpp"
 #include "controller_interface/helpers.hpp"
@@ -61,10 +62,98 @@ controller_interface::return_type PathFollowingController::update(
   const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
 {
   if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
-  {
     return controller_interface::return_type::OK;
+  
+  // update dynamic parameters
+  if (param_listener_->is_old(params_))
+  {
+    params_ = param_listener_->get_params();
+    default_tolerances_ = get_segment_tolerances(params_);
+    /* REVIEW NECESSITY
+    // update the PID gains
+    // variable use_closed_loop_pid_adapter_ is updated in on_configure only
+    if (use_closed_loop_pid_adapter_)
+    {
+      update_pids();
+    }
+    */
   }
 
+  // REVIEW, move to UTILS
+  auto compute_error_for_joint = [&](
+                                   JointTrajectoryPoint & error, int index,
+                                   const JointTrajectoryPoint & current,
+                                   const JointTrajectoryPoint & desired)
+  {
+    // error defined as the difference between current and desired
+    if (joints_angle_wraparound_[index])
+    {
+      // if desired, the shortest_angular_distance is calculated, i.e., the error is
+      //  normalized between -pi<error<pi
+      error.positions[index] =
+        angles::shortest_angular_distance(current.positions[index], desired.positions[index]);
+    }
+    else
+    {
+      error.positions[index] = desired.positions[index] - current.positions[index];
+    }
+    if (
+      has_velocity_state_interface_ &&
+      (has_velocity_command_interface_ || has_effort_command_interface_))
+    {
+      error.velocities[index] = desired.velocities[index] - current.velocities[index];
+    }
+    if (has_acceleration_state_interface_ && has_acceleration_command_interface_)
+    {
+      error.accelerations[index] = desired.accelerations[index] - current.accelerations[index];
+    }
+  };
+
+  // REVIEW, check if joiint_interface can be const, move to utils
+  auto assign_interface_from_point =
+    [&](auto & joint_interface, const std::vector<double> & trajectory_point_interface)
+  {
+    for (size_t index = 0; index < dof_; ++index)
+    {
+      joint_interface[index].get().set_value(trajectory_point_interface[index]);
+    }
+  };
+
+
+
+  // get active goal from the action server
+  const auto active_goal = *rt_active_goal_.readFromRT();
+
+  // REVIEW: rewrite this logic in a nicer way, get rid of dereferencing
+  // check if there is a new goal message from topic
+  auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
+  auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();
+  // Discard goal if it is pending, but not active (still somewhere in goal_handle_timer_)
+  if(current_external_msg != *new_external_msg &&
+    (*(rt_goal_pending_.readFromRT()) && !active_goal) == false)
+  {
+    fill_partial_goal(*new_external_msg);
+    sort_to_local_joint_order(*new_external_msg);
+    traj_external_point_ptr_->update(*new_external_msg);
+  }
+
+  // update current state
+  // REVIEW NECESSITY for time_from_start in state_current
+  state_current_.time_from_start.set__sec(0);
+  read_state_from_state_interfaces(state_current_);
+
+  if(has_active_trajectory())
+  {
+    // if first time sampling, reset index, start from first point.
+    // THis should happen automatically on first update of a new
+    /*
+    if(!traj_external_point_ptr_->is_sampled_already())
+    {
+      traj_external_point_ptr_->reset_index();
+    }
+    */
+
+  }
 
   return controller_interface::return_type::OK;
 }
@@ -433,7 +522,7 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   
   if (active_goal)
   {
-    rt_has_pending_goal_.writeFromNonRT(false);
+    rt_goal_pending_.writeFromNonRT(false);
     auto action_res = std::make_shared<ActionType::Result>();
     action_res->set__error_code(ActionType::Result::INVALID_GOAL);
     action_res->set__error_string("Current goal cancelled during controller deactivation.");
@@ -476,6 +565,28 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
 }
 
 // UTILS ----------------------------------------
+
+void PathFollowingController::init_hold_position_msg()
+{
+  hold_position_msg_ptr_ = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
+  hold_position_msg_ptr_->header.stamp =
+    rclcpp::Time(0.0, 0.0, get_node()->get_clock()->get_clock_type());  // start immediately
+  hold_position_msg_ptr_->joint_names = params_.joints;
+  hold_position_msg_ptr_->points.resize(1);  // a trivial msg only
+  hold_position_msg_ptr_->points[0].velocities.clear();
+  hold_position_msg_ptr_->points[0].accelerations.clear();
+  hold_position_msg_ptr_->points[0].effort.clear();
+  if (has_velocity_command_interface_ || has_acceleration_command_interface_)
+  {
+    // add velocity, so that trajectory sampling returns velocity points in any case
+    hold_position_msg_ptr_->points[0].velocities.resize(dof_, 0.0);
+  }
+  if (has_acceleration_command_interface_)
+  {
+    // add velocity, so that trajectory sampling returns acceleration points in any case
+    hold_position_msg_ptr_->points[0].accelerations.resize(dof_, 0.0);
+  }
+}
 
 bool PathFollowingController::validate_trajectory_msg(
   const trajectory_msgs::msg::JointTrajectory & trajectory) const
@@ -768,24 +879,165 @@ void PathFollowingController::read_state_from_state_interfaces(JointTrajectoryPo
   }
 }
 
+void PathFollowingController::fill_partial_goal(
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg) const
+{
+  // REVIEW: move this to trajectory validation and fill a partial goal there.
+  // joint names in the goal are a subset of existing joints, as checked in goal_callback
+  // so if the size matches, no filling is needed.
+  if (dof_ == trajectory_msg->joint_names.size()) 
+    return;
+
+
+  trajectory_msg->joint_names.reserve(dof_);
+
+  // REVIEW: rework this logic
+  for (size_t index = 0; index < dof_; ++index)
+  {
+    {
+      if (
+        std::find(
+          trajectory_msg->joint_names.begin(), trajectory_msg->joint_names.end(),
+          params_.joints[index]) != trajectory_msg->joint_names.end())
+      {
+        // joint found on msg
+        continue;
+      }
+      trajectory_msg->joint_names.push_back(params_.joints[index]);
+
+      for (auto & it : trajectory_msg->points)
+      {
+        // Assume hold position with 0 velocity and acceleration for missing joints
+        if (!it.positions.empty())
+        {
+          if (
+            has_position_command_interface_ &&
+            !std::isnan(joint_command_interface_[0][index].get().get_value()))
+          {
+            // copy last command if cmd interface exists
+            it.positions.push_back(joint_command_interface_[0][index].get().get_value());
+          }
+          else if (has_position_state_interface_)
+          {
+            // copy current state if state interface exists
+            it.positions.push_back(joint_state_interface_[0][index].get().get_value());
+          }
+        }
+        if (!it.velocities.empty())
+        {
+          it.velocities.push_back(0.0);
+        }
+        if (!it.accelerations.empty())
+        {
+          it.accelerations.push_back(0.0);
+        }
+        if (!it.effort.empty())
+        {
+          it.effort.push_back(0.0);
+        }
+      }
+    }
+  }
+}
+
+void PathFollowingController::sort_to_local_joint_order(
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg)
+{
+  // rearrange all points in the trajectory message based on mapping
+  std::vector<size_t> mapping_vector = mapping(trajectory_msg->joint_names, params_.joints);
+  auto remap = [this](
+                 const std::vector<double> & to_remap,
+                 const std::vector<size_t> & mapping) -> std::vector<double>
+  {
+    if (to_remap.empty())
+    {
+      return to_remap;
+    }
+    if (to_remap.size() != mapping.size())
+    {
+      RCLCPP_WARN(
+        get_node()->get_logger(), "Invalid input size (%zu) for sorting", to_remap.size());
+      return to_remap;
+    }
+    static std::vector<double> output(dof_, 0.0);
+    // Only resize if necessary since it's an expensive operation
+    if (output.size() != mapping.size())
+    {
+      output.resize(mapping.size(), 0.0);
+    }
+    for (size_t index = 0; index < mapping.size(); ++index)
+    {
+      auto map_index = mapping[index];
+      output[map_index] = to_remap[index];
+    }
+    return output;
+  };
+
+  for (size_t index = 0; index < trajectory_msg->points.size(); ++index)
+  {
+    trajectory_msg->points[index].positions =
+      remap(trajectory_msg->points[index].positions, mapping_vector);
+
+    trajectory_msg->points[index].velocities =
+      remap(trajectory_msg->points[index].velocities, mapping_vector);
+
+    trajectory_msg->points[index].accelerations =
+      remap(trajectory_msg->points[index].accelerations, mapping_vector);
+
+    trajectory_msg->points[index].effort =
+      remap(trajectory_msg->points[index].effort, mapping_vector);
+  }
+}
+
+void PathFollowingController::add_new_trajectory_msg(
+  const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> & traj_msg)
+{
+  traj_msg_external_point_ptr_.writeFromNonRT(traj_msg);
+}
+
+std::shared_ptr<JointTrajectory> PathFollowingController::set_hold_position()
+{
+  // Command to stay at current position
+  hold_position_msg_ptr_->points[0].positions = state_current_.positions;
+
+  // set flag, otherwise tolerances will be checked with holding position too
+  rt_is_holding_.writeFromNonRT(true);
+
+  return hold_position_msg_ptr_;
+}
+
+bool PathFollowingController::has_active_trajectory() const
+{
+  return traj_external_point_ptr_ != nullptr && traj_external_point_ptr_->has_trajectory_msg();
+}
+
+void PathFollowingController::preempt_active_goal()
+{
+  const auto active_goal = *rt_active_goal_.readFromNonRT();
+  if (active_goal)
+  {
+    auto action_res = std::make_shared<ActionType::Result>();
+    action_res->set__error_code(ActionType::Result::INVALID_GOAL);
+    action_res->set__error_string("Current goal cancelled due to new incoming action.");
+    active_goal->setCanceled(action_res);
+    rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+  }
+}
 // CALLBACKS -----------------------------------------------------
 
 void PathFollowingController::subscriber_callback(
   const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> msg)
 {
-  /*
   if (!validate_trajectory_msg(*msg))
-  {
     return;
-  }
+
   // http://wiki.ros.org/joint_trajectory_controller/UnderstandingTrajectoryReplacement
   // always replace old msg with new one for now
   if (subscriber_is_active_)
   {
     add_new_trajectory_msg(msg);
-    rt_is_holding_.writeFromNonRT(false);
+    //rt_is_holding_.writeFromNonRT(false);
   }
-  */
 };
 
 rclcpp_action::GoalResponse PathFollowingController::goal_received_callback(
@@ -793,7 +1045,6 @@ rclcpp_action::GoalResponse PathFollowingController::goal_received_callback(
 {
   RCLCPP_INFO(get_node()->get_logger(), "Received new action goal");
 
-  /*
   // Precondition: Running controller
   if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
   {
@@ -806,7 +1057,7 @@ rclcpp_action::GoalResponse PathFollowingController::goal_received_callback(
   {
     return rclcpp_action::GoalResponse::REJECT;
   }
-  */
+
   RCLCPP_INFO(get_node()->get_logger(), "Accepted new action goal");
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
@@ -815,7 +1066,7 @@ rclcpp_action::CancelResponse PathFollowingController::goal_cancelled_callback(
   const std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle)
 {
   RCLCPP_INFO(get_node()->get_logger(), "Got request to cancel goal");
-  /*
+
   // Check that cancel request refers to currently active goal (if any)
   const auto active_goal = *rt_active_goal_.readFromNonRT();
   if (active_goal && active_goal->gh_ == goal_handle)
@@ -823,25 +1074,25 @@ rclcpp_action::CancelResponse PathFollowingController::goal_cancelled_callback(
     RCLCPP_INFO(
       get_node()->get_logger(), "Canceling active action goal because cancel callback received.");
 
+    //REVIEW: gather this into some remove_goal() fucntion
     // Mark the current goal as canceled
-    rt_has_pending_goal_.writeFromNonRT(false);
-    auto action_res = std::make_shared<FollowJTrajAction::Result>();
+    rt_goal_pending_.writeFromNonRT(false);
+    auto action_res = std::make_shared<ActionType::Result>();
     active_goal->setCanceled(action_res);
     rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
 
     // Enter hold current position mode
     add_new_trajectory_msg(set_hold_position());
   }
-  */
+
   return rclcpp_action::CancelResponse::ACCEPT;
 }
 
 void PathFollowingController::goal_accepted_callback(
   std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle)
 {
-  /*
   // mark a pending goal
-  rt_has_pending_goal_.writeFromNonRT(true);
+  rt_goal_pending_.writeFromNonRT(true);
 
   // Update new trajectory
   {
@@ -859,14 +1110,11 @@ void PathFollowingController::goal_accepted_callback(
   rt_goal->execute();
   rt_active_goal_.writeFromNonRT(rt_goal);
 
-  // Set smartpointer to expire for create_wall_timer to delete previous entry from timer list
+  // Setup periodical goal status schecking
   goal_handle_timer_.reset();
-
-  // Setup goal status checking timer
   goal_handle_timer_ = get_node()->create_wall_timer(
     action_monitor_period_.to_chrono<std::chrono::nanoseconds>(),
     std::bind(&RealtimeGoalHandle::runNonRealtime, rt_goal));
-  */
 }
 
 void PathFollowingController::query_state_service(

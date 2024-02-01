@@ -16,6 +16,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   realtime_tools
   std_srvs
   trajectory_msgs
+  angles
 )
 
 find_package(ament_cmake REQUIRED)
