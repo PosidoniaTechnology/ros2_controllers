@@ -202,6 +202,7 @@ private:
   void sort_to_local_joint_order(
     std::shared_ptr<JointTrajectory> trajectory_msg);
   void preempt_active_goal();
+  std::shared_ptr<JointTrajectory> set_success_trajectory_point();
 
   void init_hold_position_msg();
   /** @brief set the current position with zero velocity and acceleration as new command

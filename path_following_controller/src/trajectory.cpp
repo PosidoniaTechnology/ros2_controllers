@@ -53,7 +53,9 @@ bool Trajectory::sample(
         if (output_state.accelerations.empty())
             output_state.accelerations.resize(output_state.positions.size(), 0.0);
     }
-
+    
+    index_ = index_ + 1;
+    
     return true;
 }
 

@@ -120,7 +120,7 @@ controller_interface::return_type PathFollowingController::update(
   };
 
 
-
+  ///////////////// GET OR REPLACE CURRENT GOAL
   // get active goal from the action server
   const auto active_goal = *rt_active_goal_.readFromRT();
 
@@ -137,10 +137,11 @@ controller_interface::return_type PathFollowingController::update(
     traj_external_point_ptr_->update(*new_external_msg);
   }
 
-  // update current state
+  ///////////////// UPDATE CURRENT STATE
   // REVIEW NECESSITY for time_from_start in state_current
   state_current_.time_from_start.set__sec(0);
   read_state_from_state_interfaces(state_current_);
+
 
   if(has_active_trajectory())
   {
@@ -153,8 +154,169 @@ controller_interface::return_type PathFollowingController::update(
     }
     */
 
+    // get next segment.
+    // sample gets the next waypoint for state_desired and start_itr,
+    // end_itr is on the next waypoint.
+    // on update() call the index is automatically reset to get first point
+    TrajectoryPointConstIter start_segment_itr, end_segment_itr;
+    const bool valid_point = traj_external_point_ptr_->sample(
+      state_desired_, start_segment_itr, end_segment_itr);
+
+    // REVIEW look into removing this bool, as the trajectory is already validated
+    if(valid_point)
+    {
+      /* REVIEW NECESSITY
+      const rclcpp::Time traj_start = traj_external_point_ptr_->time_from_start();
+      // this is the time instance
+      // - started with the first segment: when the first point will be reached (in the future)
+      // - later: when the point of the current segment was reached
+      const rclcpp::Time segment_time_from_start = traj_start + start_segment_itr->time_from_start;
+      // time_difference is
+      // - negative until first point is reached
+      // - counting from zero to time_from_start of next point
+      double time_difference = time.seconds() - segment_time_from_start.seconds();
+      */
+      bool tolerance_violated_while_moving = false;
+      bool outside_goal_tolerance = false;
+      const bool at_last_point = end_segment_itr == traj_external_point_ptr_->end();
+
+      /*  REVIEW NECESSITY FOR A TIMEOUT 
+      // have we reached the end, are not holding position, and is a timeout configured?
+      // Check independently of other tolerances
+      if (
+        !before_last_point && *(rt_is_holding_.readFromRT()) == false && cmd_timeout_ > 0.0 &&
+        time_difference > cmd_timeout_)
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "Aborted due to command timeout");
+
+        traj_msg_external_point_ptr_.reset();
+        traj_msg_external_point_ptr_.initRT(set_hold_position());
+      }
+      */
+
+      
+      ///////////////// CHECK TOLERANCES
+      for (size_t index = 0; index < dof_; ++index)
+      {
+        compute_error_for_joint(state_error_, index, state_current_, state_desired_);
+
+        // REVIEW NECESSITY FOR TWO TOLERANCE VIOLATION CHECKS
+        // Always check the state tolerance on the first sample in case the first sample
+        // is the last point
+        // print output per default, goal will be aborted afterwards
+        if ( (!at_last_point || !traj_external_point_ptr_->is_sampled_already()) 
+            && *(rt_is_holding_.readFromRT()) == false 
+            && !check_state_tolerance_per_joint(
+              state_error_, index, default_tolerances_.state_tolerance[index], true /* show_errors */))
+        {
+          tolerance_violated_while_moving = true;
+        }
+
+        // past the final point, check that we end up inside goal tolerance
+        if (
+          at_last_point 
+          && *(rt_is_holding_.readFromRT()) == false 
+          && !check_state_tolerance_per_joint(
+            state_error_, index, default_tolerances_.goal_state_tolerance[index],
+            false /* show_errors */))
+        {
+          outside_goal_tolerance = true;
+        }
+      }
+
+      ///////////////// WRITE TO HARDWARE
+      if (!tolerance_violated_while_moving)
+      {
+        /* REVIEW DURING PID INTRODUCTION
+        if (use_closed_loop_pid_adapter_)
+        {
+          // Update PIDs
+          for (auto i = 0ul; i < dof_; ++i)
+          {
+            tmp_command_[i] = (state_desired_.velocities[i] * ff_velocity_scale_[i]) +
+                              pids_[i]->computeCommand(
+                                state_error_.positions[i], state_error_.velocities[i],
+                                (uint64_t)period.nanoseconds());
+          }
+        }
+        */
+
+        // set values for next hardware write()
+        if (has_position_command_interface_)
+          assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
+        if (has_velocity_command_interface_)
+          assign_interface_from_point(joint_command_interface_[1], state_desired_.velocities);
+        if (has_acceleration_command_interface_)
+          assign_interface_from_point(joint_command_interface_[2], state_desired_.accelerations);
+
+        // store the previous command. Used in open-loop control mode
+        last_commanded_state_ = state_desired_;
+      }
+
+      ///////////////// FEEDBACK
+      if (active_goal)
+      {
+        // send feedback
+        auto feedback = std::make_shared<ActionType::Feedback>();
+        feedback->header.stamp = time;
+        feedback->joint_names = params_.joints;
+
+        feedback->actual = state_current_;
+        feedback->desired = state_desired_;
+        feedback->error = state_error_;
+        active_goal->setFeedback(feedback);
+
+        // check abort
+        if (tolerance_violated_while_moving)
+        {
+          auto result = std::make_shared<ActionType::Result>();
+          result->set__error_code(ActionType::Result::PATH_TOLERANCE_VIOLATED);
+          active_goal->setAborted(result);
+          // TODO(matthew-reynolds): Need a lock-free write here
+          // See https://github.com/ros-controls/ros2_controllers/issues/168
+          rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+          rt_goal_pending_.writeFromNonRT(false);
+
+          RCLCPP_WARN(get_node()->get_logger(), "Aborted due to state tolerance violation");
+
+          traj_msg_external_point_ptr_.reset();
+          traj_msg_external_point_ptr_.initRT(set_hold_position());
+        }
+
+        // check goal tolerance
+        else if (at_last_point)
+        {
+          if (!outside_goal_tolerance)
+          {
+            auto res = std::make_shared<ActionType::Result>();
+            res->set__error_code(ActionType::Result::SUCCESSFUL);
+            active_goal->setSucceeded(res);
+            // TODO(matthew-reynolds): Need a lock-free write here
+            // See https://github.com/ros-controls/ros2_controllers/issues/168
+            rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+            rt_goal_pending_.writeFromNonRT(false);
+
+            RCLCPP_INFO(get_node()->get_logger(), "Goal reached, success!");
+
+            traj_msg_external_point_ptr_.reset();
+            traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
+          }
+        }
+      }
+      else if (tolerance_violated_while_moving && *(rt_goal_pending_.readFromRT()) == false)
+      {
+        // we need to ensure that there is no pending goal -> we get a race condition otherwise
+        RCLCPP_ERROR(get_node()->get_logger(), "Holding position due to state tolerance violation");
+
+        traj_msg_external_point_ptr_.reset();
+        traj_msg_external_point_ptr_.initRT(set_hold_position());
+      }
+
+    }
   }
 
+  // REVIEW: implement this
+  //publish_state(state_desired_, state_current_, state_error_);
   return controller_interface::return_type::OK;
 }
 
@@ -990,7 +1152,7 @@ void PathFollowingController::sort_to_local_joint_order(
 }
 
 void PathFollowingController::add_new_trajectory_msg(
-  const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> & traj_msg)
+  const std::shared_ptr<JointTrajectory> & traj_msg)
 {
   traj_msg_external_point_ptr_.writeFromNonRT(traj_msg);
 }
@@ -1001,6 +1163,19 @@ std::shared_ptr<JointTrajectory> PathFollowingController::set_hold_position()
   hold_position_msg_ptr_->points[0].positions = state_current_.positions;
 
   // set flag, otherwise tolerances will be checked with holding position too
+  rt_is_holding_.writeFromNonRT(true);
+
+  return hold_position_msg_ptr_;
+}
+
+std::shared_ptr<JointTrajectory> PathFollowingController::set_success_trajectory_point()
+{
+  // set last command to be repeated at success, no matter if it has nonzero velocity or
+  // acceleration
+  hold_position_msg_ptr_->points[0] = traj_external_point_ptr_->get_trajectory_msg()->points.back();
+  hold_position_msg_ptr_->points[0].time_from_start = rclcpp::Duration(0, 0);
+
+  // set flag, otherwise tolerances will be checked with success_trajectory_point too
   rt_is_holding_.writeFromNonRT(true);
 
   return hold_position_msg_ptr_;
