@@ -69,14 +69,6 @@ controller_interface::return_type PathFollowingController::update(
   {
     params_ = param_listener_->get_params();
     default_tolerances_ = get_segment_tolerances(params_);
-    /* REVIEW NECESSITY
-    // update the PID gains
-    // variable use_closed_loop_pid_adapter_ is updated in on_configure only
-    if (use_closed_loop_pid_adapter_)
-    {
-      update_pids();
-    }
-    */
   }
 
   // REVIEW, move to UTILS
@@ -227,20 +219,6 @@ controller_interface::return_type PathFollowingController::update(
       ///////////////// WRITE TO HARDWARE
       if (!tolerance_violated_while_moving)
       {
-        /* REVIEW DURING PID INTRODUCTION
-        if (use_closed_loop_pid_adapter_)
-        {
-          // Update PIDs
-          for (auto i = 0ul; i < dof_; ++i)
-          {
-            tmp_command_[i] = (state_desired_.velocities[i] * ff_velocity_scale_[i]) +
-                              pids_[i]->computeCommand(
-                                state_error_.positions[i], state_error_.velocities[i],
-                                (uint64_t)period.nanoseconds());
-          }
-        }
-        */
-
         // set values for next hardware write()
         if (has_position_command_interface_)
           assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
@@ -330,7 +308,7 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
 
   command_joint_names_ = params_.command_joints;
 
-/*     REVIEW NECESSITY
+
   if (command_joint_names_.empty())
   {
     command_joint_names_ = params_.joints;
@@ -343,7 +321,7 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
       LOGGER, "'command_joints' parameter has to have the same size as 'joints' parameter.");
     return CallbackReturn::FAILURE;
   }
-*/
+
   if (params_.command_interfaces.empty())
   {
     RCLCPP_ERROR(LOGGER, "'command_interfaces' parameter is empty.");
@@ -445,26 +423,8 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     interpolation_methods::InterpolationMethodMap.at(interpolation_method_).c_str());
   */
 
-  /*
-  // if there is only velocity or if there is effort command interface
-  // then use also PID adapter
-  use_closed_loop_pid_adapter_ =
-    (has_velocity_command_interface_ && params_.command_interfaces.size() == 1 &&
-     !params_.open_loop_control) ||
-    has_effort_command_interface_;
-
-  if (use_closed_loop_pid_adapter_)
-  {
-    pids_.resize(dof_);
-    ff_velocity_scale_.resize(dof_);
-    tmp_command_.resize(dof_, 0.0);
-
-    update_pids();
-  }
-  */
-  
   // prepare hold_position_msg
-  //init_hold_position_msg();
+  init_hold_position_msg();
 
   resize_joint_trajectory_point(state_current_, dof_);
   resize_joint_trajectory_point_command(command_current_, dof_);
@@ -528,13 +488,8 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
  
   last_state_publish_time_ = get_node()->now();
 
-  using namespace std::placeholders;
-  // SERVICES
-  query_state_service_ = get_node()->create_service<QueryStateType>(
-    std::string(get_node()->get_name()) + "/query_state",
-    std::bind(&PathFollowingController::query_state_service, this, _1, _2));
-
   // ACTIONS
+  using namespace std::placeholders;
   if (params_.allow_partial_joints_goal)
     RCLCPP_INFO(LOGGER, "Goals with partial set of joints are allowed");
   
@@ -638,12 +593,9 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
       return CallbackReturn::ERROR;
     }
   }
-  
-  /*
   traj_external_point_ptr_ = std::make_shared<Trajectory>();
   traj_msg_external_point_ptr_.writeFromNonRT(
     std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
-  */
 
   subscriber_is_active_ = true;
   last_state_publish_time_ = get_node()->now();
@@ -651,8 +603,6 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   // REVIEW: What is meant by restart? Move to utils
   // Handle restart of controller by reading from commands if those are not NaN (a controller was
   // running already)
-
-  /*
   trajectory_msgs::msg::JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
   if (read_state_from_command_interfaces(state))
@@ -666,13 +616,11 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
     read_state_from_state_interfaces(state_current_);
     read_state_from_state_interfaces(last_commanded_state_);
   }
-  */
 
-  /* TRAJECTORY
+
   // The controller should start by holding position at the beginning of active state
   add_new_trajectory_msg(set_hold_position());
   rt_is_holding_.writeFromNonRT(true);
-  */
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -718,10 +666,7 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   release_interfaces();
 
   subscriber_is_active_ = false;
-
-  /* TRAJECTORY
   traj_external_point_ptr_.reset();
-  */
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -1292,53 +1237,6 @@ void PathFollowingController::goal_accepted_callback(
     std::bind(&RealtimeGoalHandle::runNonRealtime, rt_goal));
 }
 
-void PathFollowingController::query_state_service(
-  const std::shared_ptr<QueryStateType::Request> request,
-  std::shared_ptr<QueryStateType::Response> response)
-{
-  /*
-  const auto logger = get_node()->get_logger();
-  // Preconditions
-  if (get_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
-  {
-    RCLCPP_ERROR(logger, "Can't sample trajectory. Controller is not active.");
-    response->success = false;
-    return;
-  }
-  const auto active_goal = *rt_active_goal_.readFromRT();
-  response->name = params_.joints;
-  trajectory_msgs::msg::JointTrajectoryPoint state_requested = state_current_;
-  if (has_active_trajectory())
-  {
-    TrajectoryPointConstIter start_segment_itr, end_segment_itr;
-    response->success = traj_external_point_ptr_->sample(
-      static_cast<rclcpp::Time>(request->time), interpolation_method_, state_requested,
-      start_segment_itr, end_segment_itr);
-    // If the requested sample time precedes the trajectory finish time respond as failure
-    if (response->success)
-    {
-      if (end_segment_itr == traj_external_point_ptr_->end())
-      {
-        RCLCPP_ERROR(logger, "Requested sample time precedes the current trajectory end time.");
-        response->success = false;
-      }
-    }
-    else
-    {
-      RCLCPP_ERROR(
-        logger, "Requested sample time is earlier than the current trajectory start time.");
-    }
-  }
-  else
-  {
-    RCLCPP_ERROR(logger, "Currently there is no valid trajectory instance.");
-    response->success = false;
-  }
-  response->position = state_requested.positions;
-  response->velocity = state_requested.velocities;
-  response->acceleration = state_requested.accelerations;
-  */
-}
 
 }  // namespace path_following_controller
 

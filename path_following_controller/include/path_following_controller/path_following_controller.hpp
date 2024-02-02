@@ -156,14 +156,6 @@ protected:
   using RealtimePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
   std::unique_ptr<RealtimePublisher> rt_publisher_;
 
-  // SERVICES
-  using QueryStateType = control_msgs::srv::QueryTrajectoryState;
-  rclcpp::Service<QueryStateType>::SharedPtr query_state_service_;
-  // service callback
-  void query_state_service(
-    const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
-    std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response);
-
   // ACTIONS
   using ActionType = control_msgs::action::FollowJointTrajectory;
   using RealtimeGoalHandle = realtime_tools::RealtimeServerGoalHandle<ActionType>;
