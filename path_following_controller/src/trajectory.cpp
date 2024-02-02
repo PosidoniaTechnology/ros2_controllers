@@ -5,6 +5,7 @@
 //
 // Unauthorized copying of this file, via any medium is strictly prohibited.
 // The file is considered confidential.
+#include <iostream>
 
 #include "path_following_controller/trajectory.hpp"
 
@@ -26,17 +27,18 @@ bool Trajectory::sample(
 {
     THROW_ON_NULLPTR(trajectory_msg_)
 
-    if (trajectory_msg_->points.empty())
+    // In the case of emtpy vector, size() returns 0 as well.
+    if (index_ >= trajectory_msg_->points.size())
     {
         start_segment_itr = end();
         end_segment_itr = end();
         return false;
     }
 
-    if (!sampled_already_)
+    if (is_first_sample_)
     {
         reset_index();
-        sampled_already_ = true;
+        is_first_sample_ = false;
     }
 
     const std::size_t last_index = trajectory_msg_->points.size() - 1;
@@ -44,7 +46,15 @@ bool Trajectory::sample(
 
     start_segment_itr = begin() + index_;
     end_segment_itr = begin() + ( index_ + 1 );
+
+
+    try {
     output_state = trajectory_msg_->points[index_];
+    } catch (const std::bad_alloc& ba) {
+        // Handle bad_alloc exception
+        std::cerr << "bad_alloc caught: " << ba.what() << std::endl;
+    }
+    //output_state = trajectory_msg_->points[index_];
 
     if(index_ == last_index)
     {   // the trajectories in msg may have empty velocities/accel, so resize them
@@ -55,7 +65,7 @@ bool Trajectory::sample(
     }
     
     index_ = index_ + 1;
-    
+
     return true;
 }
 
@@ -63,7 +73,7 @@ void Trajectory::update(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> j
 {
     trajectory_msg_ = joint_trajectory;
     trajectory_start_time_ = static_cast<rclcpp::Time>(joint_trajectory->header.stamp);
-    sampled_already_ = false;
+    is_first_sample_ = true;
 }
 
 TrajectoryPointConstIter Trajectory::begin() const

@@ -101,7 +101,7 @@ controller_interface::return_type PathFollowingController::update(
     }
   };
 
-  // REVIEW, check if joiint_interface can be const, move to utils
+  // REVIEW, check if joint_interface can be const, move to utils
   auto assign_interface_from_point =
     [&](auto & joint_interface, const std::vector<double> & trajectory_point_interface)
   {
