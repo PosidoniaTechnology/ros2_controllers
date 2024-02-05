@@ -137,40 +137,42 @@ controller_interface::return_type PathFollowingController::update(
 
   if(has_active_trajectory())
   {
-    // if first time sampling, reset index, start from first point.
-    // THis should happen automatically on first update of a new
-    /*
-    if(!traj_external_point_ptr_->is_sampled_already())
-    {
-      traj_external_point_ptr_->reset_index();
-    }
-    */
-
     // get next segment.
-    // sample gets the next waypoint for state_desired and start_itr,
-    // end_itr is on the next waypoint.
-    // on update() call the index is automatically reset to get first point
-    TrajectoryPointConstIter start_segment_itr, end_segment_itr;
-    const bool valid_point = traj_external_point_ptr_->sample(
-      state_desired_, start_segment_itr, end_segment_itr);
+    // if tolerance violated, don't sample. This leaves the previous goal in state_desired_.
+    // reset tolerance flag and try again.
+    bool valid_point = true;
+    if(!is_outside_waypoint_tolerance_ && !is_outside_goal_tolerance_)
+    {
+      // sample gets the next waypoint for state_desired and start_itr,
+      // end_itr is on the next waypoint.
+      // on update() call the index is automatically reset to get first point
+      valid_point = traj_external_point_ptr_->sample(
+        state_desired_, start_segment_itr_, end_segment_itr_);
+      RCLCPP_INFO(get_node()->get_logger(), "sampling at index[%d]", traj_external_point_ptr_->get_index() - 1);
+    }
+    else if(is_outside_waypoint_tolerance_ && !is_outside_goal_tolerance_){
+      is_outside_waypoint_tolerance_ = false;
+      RCLCPP_INFO(get_node()->get_logger(), "waypoint tolerance violated, repeating goal");
+      RCLCPP_INFO(get_node()->get_logger(), "index: %d", traj_external_point_ptr_->get_index() - 1 );
+    }
+    else if(is_outside_goal_tolerance_ && !is_outside_waypoint_tolerance_){
+      is_outside_goal_tolerance_ = false;
+      RCLCPP_INFO(get_node()->get_logger(), "Goal tolerance violated, repeating goal");
+      RCLCPP_INFO(get_node()->get_logger(), "index: %d", traj_external_point_ptr_->get_index() - 1);
+    }
+    else{
+      RCLCPP_INFO(get_node()->get_logger(), "both tolerances violated, repeating goal");
+    }
+
+
+
 
     // REVIEW look into removing this bool, as the trajectory is already validated
     if(valid_point)
-    {
-      /* REVIEW NECESSITY
-      const rclcpp::Time traj_start = traj_external_point_ptr_->time_from_start();
-      // this is the time instance
-      // - started with the first segment: when the first point will be reached (in the future)
-      // - later: when the point of the current segment was reached
-      const rclcpp::Time segment_time_from_start = traj_start + start_segment_itr->time_from_start;
-      // time_difference is
-      // - negative until first point is reached
-      // - counting from zero to time_from_start of next point
-      double time_difference = time.seconds() - segment_time_from_start.seconds();
-      */
-      bool tolerance_violated_while_moving = false;
-      bool outside_goal_tolerance = false;
-      const bool at_last_point = end_segment_itr == traj_external_point_ptr_->end();
+    {      
+      const bool is_at_last_point = end_segment_itr_ == traj_external_point_ptr_->end();
+      if(is_at_last_point)
+        RCLCPP_INFO(get_node()->get_logger(), "reached last point of trajectory. %d.", traj_external_point_ptr_->get_index() - 1);
 
       /*  REVIEW NECESSITY FOR A TIMEOUT 
       // have we reached the end, are not holding position, and is a timeout configured?
@@ -186,6 +188,16 @@ controller_interface::return_type PathFollowingController::update(
       }
       */
 
+      ///////////////// WRITE TO HARDWARE
+      if (has_position_command_interface_)
+        assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
+      if (has_velocity_command_interface_)
+        assign_interface_from_point(joint_command_interface_[1], state_desired_.velocities);
+      if (has_acceleration_command_interface_)
+        assign_interface_from_point(joint_command_interface_[2], state_desired_.accelerations);
+      // store the previous command. Used in open-loop control mode
+      last_commanded_state_ = state_desired_;
+
       
       ///////////////// CHECK TOLERANCES
       for (size_t index = 0; index < dof_; ++index)
@@ -195,40 +207,26 @@ controller_interface::return_type PathFollowingController::update(
         // REVIEW NECESSITY FOR TWO TOLERANCE VIOLATION CHECKS
         // Always check the state tolerance on the first sample in case the first sample
         // is the last point
-        // print output per default, goal will be aborted afterwards
-        if ( (!at_last_point || !traj_external_point_ptr_->is_sampled_already()) 
+        if ( (!is_at_last_point || !traj_external_point_ptr_->is_sampled_already()) 
             && *(rt_is_holding_.readFromRT()) == false 
             && !check_state_tolerance_per_joint(
-              state_error_, index, default_tolerances_.state_tolerance[index], true /* show_errors */))
+              state_error_, index, default_tolerances_.state_tolerance[index], false /* show_errors */))
         {
-          tolerance_violated_while_moving = true;
+          RCLCPP_INFO(get_node()->get_logger(), "waypoint! -> joint%ld", index);
+          is_outside_waypoint_tolerance_ = true;
         }
 
         // past the final point, check that we end up inside goal tolerance
         if (
-          at_last_point 
+          is_at_last_point 
           && *(rt_is_holding_.readFromRT()) == false 
           && !check_state_tolerance_per_joint(
             state_error_, index, default_tolerances_.goal_state_tolerance[index],
             false /* show_errors */))
         {
-          outside_goal_tolerance = true;
+          RCLCPP_INFO(get_node()->get_logger(), "goal! -> joint%ld", index);
+          is_outside_goal_tolerance_ = true;
         }
-      }
-
-      ///////////////// WRITE TO HARDWARE
-      if (!tolerance_violated_while_moving)
-      {
-        // set values for next hardware write()
-        if (has_position_command_interface_)
-          assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
-        if (has_velocity_command_interface_)
-          assign_interface_from_point(joint_command_interface_[1], state_desired_.velocities);
-        if (has_acceleration_command_interface_)
-          assign_interface_from_point(joint_command_interface_[2], state_desired_.accelerations);
-
-        // store the previous command. Used in open-loop control mode
-        last_commanded_state_ = state_desired_;
       }
 
       ///////////////// FEEDBACK
@@ -244,27 +242,9 @@ controller_interface::return_type PathFollowingController::update(
         feedback->error = state_error_;
         active_goal->setFeedback(feedback);
 
-        // check abort
-        if (tolerance_violated_while_moving)
+        if (is_at_last_point)
         {
-          auto result = std::make_shared<ActionType::Result>();
-          result->set__error_code(ActionType::Result::PATH_TOLERANCE_VIOLATED);
-          active_goal->setAborted(result);
-          // TODO(matthew-reynolds): Need a lock-free write here
-          // See https://github.com/ros-controls/ros2_controllers/issues/168
-          rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
-          rt_goal_pending_.writeFromNonRT(false);
-
-          RCLCPP_WARN(get_node()->get_logger(), "Aborted due to state tolerance violation");
-
-          traj_msg_external_point_ptr_.reset();
-          traj_msg_external_point_ptr_.initRT(set_hold_position());
-        }
-
-        // check goal tolerance
-        else if (at_last_point)
-        {
-          if (!outside_goal_tolerance)
+          if (!is_outside_goal_tolerance_ && !is_outside_waypoint_tolerance_)
           {
             auto res = std::make_shared<ActionType::Result>();
             res->set__error_code(ActionType::Result::SUCCESSFUL);
@@ -281,7 +261,7 @@ controller_interface::return_type PathFollowingController::update(
           }
         }
       }
-      else if (tolerance_violated_while_moving && *(rt_goal_pending_.readFromRT()) == false)
+      else if (is_outside_waypoint_tolerance_ && *(rt_goal_pending_.readFromRT()) == false)
       {
         // we need to ensure that there is no pending goal -> we get a race condition otherwise
         RCLCPP_ERROR(get_node()->get_logger(), "Holding position due to state tolerance violation");
@@ -289,7 +269,6 @@ controller_interface::return_type PathFollowingController::update(
         traj_msg_external_point_ptr_.reset();
         traj_msg_external_point_ptr_.initRT(set_hold_position());
       }
-
     }
   }
 

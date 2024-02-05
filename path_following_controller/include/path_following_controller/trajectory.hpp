@@ -82,6 +82,7 @@ public:
         return trajectory_msg_;
     }
     
+    int get_index(){ return index_; }
     bool is_sampled_already() const { return !is_first_sample_; }
 private:
     using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
@@ -92,7 +93,7 @@ private:
 
     JointTrajectoryPoint state_before_new_trajectory_;
 
-    uint index_;
+    int index_;
     
     bool is_first_sample_ = true;
 };

@@ -92,15 +92,19 @@ protected:
   std::shared_ptr<JointTrajectory> hold_position_msg_ptr_ = nullptr;
 
   // Preallocate variables used in the realtime update() function
-  trajectory_msgs::msg::JointTrajectoryPoint state_current_;
-  trajectory_msgs::msg::JointTrajectoryPoint command_current_;
-  trajectory_msgs::msg::JointTrajectoryPoint state_desired_;
-  trajectory_msgs::msg::JointTrajectoryPoint state_error_;
-  trajectory_msgs::msg::JointTrajectoryPoint last_commanded_state_;
+  JointTrajectoryPoint state_current_;
+  JointTrajectoryPoint command_current_;
+  JointTrajectoryPoint state_desired_;
+  JointTrajectoryPoint state_error_;
+  JointTrajectoryPoint last_commanded_state_;
+
+  TrajectoryPointConstIter start_segment_itr_, end_segment_itr_;
 
   // Should position errors get wrapped around for i-th joint?
   std::vector<bool> joints_angle_wraparound_;
 
+  bool is_outside_waypoint_tolerance_ = false;
+  bool is_outside_goal_tolerance_ = false;
   // Tolerances for a given trajectory segment
   SegmentTolerances default_tolerances_;
 
