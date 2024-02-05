@@ -27,31 +27,28 @@ bool Trajectory::sample(
 {
     THROW_ON_NULLPTR(trajectory_msg_)
 
+    output_state = JointTrajectoryPoint();
+
     // In the case of emtpy vector, size() returns 0 as well.
-    if (index_ >= trajectory_msg_->points.size())
+    if (is_completed())
     {
         start_segment_itr = end();
         end_segment_itr = end();
+        output_state = trajectory_msg_->points.back();
         return false;
-    }
-
-    const std::size_t last_index = trajectory_msg_->points.size() - 1;
-    output_state = JointTrajectoryPoint();
-
+    }    
 
     start_segment_itr = begin() + index_;
-    end_segment_itr = begin() + ( index_ + 1 );
+    end_segment_itr = begin() + ( index_ + 1);
     output_state = trajectory_msg_->points[index_];
 
-    if(index_ == last_index)
+    if(is_at_last_point())
     {   // the trajectories in msg may have empty velocities/accel, so resize them
         if (output_state.velocities.empty())
             output_state.velocities.resize(output_state.positions.size(), 0.0);
         if (output_state.accelerations.empty())
             output_state.accelerations.resize(output_state.positions.size(), 0.0);
     }
-    
-    index_ = index_ + 1;
 
     return true;
 }

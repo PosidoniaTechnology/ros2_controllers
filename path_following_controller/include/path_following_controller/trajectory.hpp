@@ -82,8 +82,12 @@ public:
         return trajectory_msg_;
     }
     
-    int get_index(){ return index_; }
-    bool is_sampled_already() const { return !is_first_sample_; }
+    uint get_index() const { return index_; }
+    bool is_at_first_point() const { return index_ == 0; }
+    bool is_at_last_point() const { return index_ == trajectory_msg_->points.size() - 1; }
+    bool is_completed() const { return index_ >= trajectory_msg_->points.size(); }
+    void increment(){ index_ = index_ + 1; }
+    
 private:
     using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
     using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
@@ -93,9 +97,7 @@ private:
 
     JointTrajectoryPoint state_before_new_trajectory_;
 
-    int index_;
-    
-    bool is_first_sample_ = true;
+    uint index_;
 };
     
 

@@ -174,6 +174,27 @@ inline bool check_state_tolerance_per_joint(
   return false;
 }
 
+/**
+ * \param state_error State error to check.
+ * \param state_tolerance State tolerance of joint to check \p state_error against.
+ * \param show_errors If the joint that violate its tolerance should be output to console. NOT
+ * REALTIME if true \return True if \p state_error fulfills \p state_tolerance.
+ */
+inline bool check_state_tolerance(
+  size_t & dof, const trajectory_msgs::msg::JointTrajectoryPoint & state_error,
+  const std::vector<StateTolerances> & state_tolerance)
+{
+  bool tolerance_fulfilled = true;
+  for (size_t index = 0; index < dof; ++index)
+  {
+    if(!check_state_tolerance_per_joint(state_error, index, state_tolerance[index], false /* show_errors */))
+    {
+      tolerance_fulfilled = false;
+    }
+  }
+  return tolerance_fulfilled;
+}
+
 }  // namespace path_following_controller
 
 #endif  // PATH_FOLLOWING_CONTROLLER__TOLERANCES_HPP_
