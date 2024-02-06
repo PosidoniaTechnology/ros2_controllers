@@ -83,8 +83,6 @@ protected:
   std::shared_ptr<path_following_controller::ParamListener> param_listener_;
   path_following_controller::Params params_;
 
-  std::vector<std::string> state_joints_;
-
   std::shared_ptr<Trajectory> traj_external_point_ptr_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<JointTrajectory>>
     traj_msg_external_point_ptr_;
@@ -103,8 +101,6 @@ protected:
   // Should position errors get wrapped around for i-th joint?
   std::vector<bool> joints_angle_wraparound_;
 
-  bool is_outside_waypoint_tolerance_ = false;
-  bool is_outside_goal_tolerance_ = false;
   // Tolerances for a given trajectory segment
   SegmentTolerances default_tolerances_;
 
@@ -147,6 +143,7 @@ protected:
 
   // SUBSCRIBERS
   bool subscriber_is_active_ = false;
+  // Subscriber for goals recieved through topics
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
     nullptr;
   // callback for topic interface
@@ -159,6 +156,7 @@ protected:
   rclcpp::Time last_state_publish_time_;
   using RealtimePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
   std::unique_ptr<RealtimePublisher> rt_publisher_;
+  void init_rt_publisher_msg();
 
   // ACTIONS
   using ActionType = control_msgs::action::FollowJointTrajectory;
@@ -184,6 +182,10 @@ protected:
 
 private:
   // UTILS
+  void compute_error_for_joint(JointTrajectoryPoint & error, int index,
+                                   const JointTrajectoryPoint & current,
+                                   const JointTrajectoryPoint & desired);
+
   bool has_active_trajectory() const;
   bool validate_trajectory_msg(const JointTrajectory & trajectory) const;
   bool validate_trajectory_point_field(

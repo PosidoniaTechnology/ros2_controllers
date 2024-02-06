@@ -21,82 +21,75 @@
 
 namespace path_following_controller
 {
-using TrajectoryPointIter = std::vector<trajectory_msgs::msg::JointTrajectoryPoint>::iterator;
-using TrajectoryPointConstIter =
-  std::vector<trajectory_msgs::msg::JointTrajectoryPoint>::const_iterator;    
-    
+
+using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
+
+using TrajectoryPointIter = std::vector<JointTrajectoryPoint>::iterator;
+using TrajectoryPointConstIter = std::vector<JointTrajectoryPoint>::const_iterator;    
+
 class Trajectory
 {
 public:
     Trajectory();
-    explicit Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory);
+    explicit Trajectory(std::shared_ptr<JointTrajectory> joint_trajectory);
 
-    void update(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory);
+
+    /**
+     * Update the \p trajectory_msg with a new trajectory and reset the \p index.
+     * \param[in] joint_trajectory new trajectory
+    */
+    void update(std::shared_ptr<JointTrajectory> joint_trajectory);
 
     /// Find the segment (made up of 2 points) and its expected state from the
     /// containing trajectory.
     /**
-     * Sampling trajectory at given \p sample_time.
+     * Sampling trajectory at given \p index.
      * If position in the \p end_segment_itr is missing it will be deduced from provided velocity, or
      * acceleration respectively. Deduction assumes that the provided velocity or acceleration have to
      * be reached at the time defined in the segment.
      *
      * Specific case returns for start_segment_itr and end_segment_itr:
-     * - Sampling before the trajectory start:
-     *   start_segment_itr = begin(), end_segment_itr = begin()
-     * - Sampling exactly on a point of the trajectory:
-     *    start_segment_itr = iterator where point is, end_segment_itr = iterator after
-     * start_segment_itr
-     * - Sampling between points:
-     *    start_segment_itr = iterator before the sampled point, end_segment_itr = iterator after
-     * start_segment_itr
-     * - Sampling after entire trajectory:
+     * - Sampling at index:
+     * - Sampling exactly on an index:
+     *    start_segment_itr = point at index, end_segment_itr = point at index + 1
+     * - Sampling between indices:
+     *    interpolation <NOT IMPLEMENTED>
+     * - Sampling after last point returns last point:
      *    start_segment_itr = --end(), end_segment_itr = end()
-     * - Sampling empty msg or before the time given in set_point_before_trajectory_msg()
+     * - Sampling empty msg
      *    return false
      *
-     * \param[in] sample_time Time at which trajectory will be sampled.
-     * \param[in] interpolation_method Specify whether splines, another method, or no interpolation at
-     * all. \param[out] expected_state Calculated new at \p sample_time. \param[out] start_segment_itr
-     * Iterator to the start segment for given \p sample_time. See description above. \param[out]
-     * end_segment_itr Iterator to the end segment for given \p sample_time. See description above.
+     * \param[in] interpolation_method <NOT IMPLEMENTED> Specify whether splines, another method, or no interpolation at
+     * all. \param[out] output_state Sampled state. \param[out] start_segment_itr
+     * Iterator to the segment start. See description above. \param[out] end_segment_itr
+     * Iterator to the segment end. See description above.
      */
     bool sample(
         /*const interpolation_methods::InterpolationMethod interpolation_method,*/
-        trajectory_msgs::msg::JointTrajectoryPoint & output_state,
+        JointTrajectoryPoint & output_state,
         TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr);
 
     TrajectoryPointConstIter begin() const;
-    
     TrajectoryPointConstIter end() const;
-    
     rclcpp::Time time_from_start() const;
     
-    bool has_trajectory_msg() const;
-    
+    bool has_trajectory_msg() const;    
     bool has_nontrivial_msg() const;
-
+    std::shared_ptr<JointTrajectory> 
+      get_trajectory_msg() const { return trajectory_msg_; }
+    
     void reset_index(){ index_ = 0; }
-    
-    std::shared_ptr<trajectory_msgs::msg::JointTrajectory> get_trajectory_msg() const{
-        return trajectory_msg_;
-    }
-    
     uint get_index() const { return index_; }
+    void increment(){ index_ = index_ + 1; }
+    
     bool is_at_first_point() const { return index_ == 0; }
     bool is_at_last_point() const { return index_ == trajectory_msg_->points.size() - 1; }
     bool is_completed() const { return index_ >= trajectory_msg_->points.size(); }
-    void increment(){ index_ = index_ + 1; }
-    
+
 private:
-    using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
-    using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 
     std::shared_ptr<JointTrajectory> trajectory_msg_;
-    rclcpp::Time trajectory_start_time_;
-
-    JointTrajectoryPoint state_before_new_trajectory_;
-
     uint index_;
 };
     

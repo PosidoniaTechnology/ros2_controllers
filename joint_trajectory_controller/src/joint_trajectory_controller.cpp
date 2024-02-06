@@ -300,6 +300,7 @@ controller_interface::return_type JointTrajectoryController::update(
           }
         }
 
+        auto temp = joint_command_interface_[0];
         // set values for next hardware write()
         if (has_position_command_interface_)
         {
