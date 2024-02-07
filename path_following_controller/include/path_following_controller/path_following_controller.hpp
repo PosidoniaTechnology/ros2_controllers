@@ -143,6 +143,7 @@ protected:
 
   // SUBSCRIBERS
   bool subscriber_is_active_ = false;
+  bool topic_goal_received_ = false;
   // Subscriber for goals recieved through topics
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
     nullptr;
@@ -166,7 +167,7 @@ protected:
 
   rclcpp_action::Server<ActionType>::SharedPtr action_server_;
   RealtimeGoalHandleBuffer rt_active_goal_;  ///< Currently active action goal, if any.
-  realtime_tools::RealtimeBuffer<bool> rt_goal_pending_;  ///< Is there a pending action goal?
+  realtime_tools::RealtimeBuffer<bool> rt_action_goal_pending_;  ///< Is there a pending action goal?
   rclcpp::TimerBase::SharedPtr goal_handle_timer_;
   rclcpp::Duration action_monitor_period_ = rclcpp::Duration(50ms);
 

@@ -76,12 +76,15 @@ controller_interface::return_type PathFollowingController::update(
   const auto active_goal = *rt_active_goal_.readFromRT();
 
   // REVIEW: rewrite this logic in a nicer way, get rid of dereferencing
-  // check if there is a new goal message from topic
+  // check if there is a new goal message
   auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
-  auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();
-  // Discard goal if it is pending, but not active (still somewhere in goal_handle_timer_)
-  if(current_external_msg != *new_external_msg &&
-    (*(rt_goal_pending_.readFromRT()) && !active_goal) == false)
+  auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();    
+
+  // Discard action goal if it is pending, but not active (still somewhere in goal_handle_timer_)
+  // or if there was a new goal received, but from topic
+  if(
+    current_external_msg != *new_external_msg 
+    && (*(rt_action_goal_pending_.readFromRT()) && !active_goal) == false)
   {
     fill_partial_goal(*new_external_msg);
     sort_to_local_joint_order(*new_external_msg);
@@ -147,10 +150,20 @@ controller_interface::return_type PathFollowingController::update(
         // TODO(matthew-reynolds): Need a lock-free write here
         // See https://github.com/ros-controls/ros2_controllers/issues/168
         rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
-        rt_goal_pending_.writeFromNonRT(false);
+        rt_action_goal_pending_.writeFromNonRT(false);
 
-        RCLCPP_INFO(get_node()->get_logger(), "Goal reached successfully.");
+        RCLCPP_INFO(get_node()->get_logger(), "Action goal reached successfully.");
 
+        traj_msg_external_point_ptr_.reset();
+        traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
+      }
+    }
+    else if(topic_goal_received_)
+    {
+      if (traj_external_point_ptr_->is_completed())
+      {
+        RCLCPP_INFO(get_node()->get_logger(), "Topic goal reached successfully.");
+        topic_goal_received_ = false;
         traj_msg_external_point_ptr_.reset();
         traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
       }
@@ -431,7 +444,7 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   
   if (active_goal)
   {
-    rt_goal_pending_.writeFromNonRT(false);
+    rt_action_goal_pending_.writeFromNonRT(false);
     auto action_res = std::make_shared<ActionType::Result>();
     action_res->set__error_code(ActionType::Result::INVALID_GOAL);
     action_res->set__error_string("Current goal cancelled during controller deactivation.");
@@ -1001,6 +1014,8 @@ void PathFollowingController::subscriber_callback(
   // always replace old msg with new one for now
   if (subscriber_is_active_)
   {
+    topic_goal_received_ = true;
+    RCLCPP_INFO(get_node()->get_logger(), "Received new message on /joint_trajectory topic");
     add_new_trajectory_msg(msg);
     rt_is_holding_.writeFromNonRT(false);
   }
@@ -1042,7 +1057,7 @@ rclcpp_action::CancelResponse PathFollowingController::goal_cancelled_callback(
 
     //REVIEW: gather this into some remove_goal() fucntion
     // Mark the current goal as canceled
-    rt_goal_pending_.writeFromNonRT(false);
+    rt_action_goal_pending_.writeFromNonRT(false);
     auto action_res = std::make_shared<ActionType::Result>();
     active_goal->setCanceled(action_res);
     rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
@@ -1058,7 +1073,7 @@ void PathFollowingController::goal_accepted_callback(
   std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle)
 {
   // mark a pending goal
-  rt_goal_pending_.writeFromNonRT(true);
+  rt_action_goal_pending_.writeFromNonRT(true);
 
   // Update new trajectory
   {

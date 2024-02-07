@@ -1,0 +1,126 @@
+# below is the yaml in string format for CLI publishing.
+#ros2 topic pub -1 /path_following_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory "{header: {frame_id: world, stamp: {sec:   0, nanosec:   0}}, joint_names: [joint0, joint1, joint2, joint3, joint4, joint5], points: [{time_from_start: {sec:   0, nanosec:   0}, positions: [3.85448e-12,   7.67134e-12, -2.46014e-11,   5.37737e-11, -2.29149e-11,   8.80711e-10]}, {time_from_start: {sec:   0, nanosec:   100000000}, positions: [-0.0104569, -0.0225,   0.0201341,   0.00236325,   0.0104567,   6.3575e-08]}, {time_from_start: {sec:   0, nanosec:   200000000}, positions: [-0.0418278, -0.09,   0.0805363,   0.00945299,   0.0418267,   2.51658e-07]}, {time_from_start: {sec:   0, nanosec:   300000000}, positions: [-0.0941125, -0.2025,   0.181207,   0.0212692,   0.09411,   5.65129e-07]}, {time_from_start: {sec:   0, nanosec:   400000000}, positions: [-0.167311, -0.36,   0.322145,   0.0378119,   0.167307,   1.00399e-06]}, {time_from_start: {sec:   0, nanosec:   500000000}, positions: [-0.259436, -0.558224,   0.499526,   0.0586321,   0.259429,   1.55632e-06]}, {time_from_start: {sec:   0, nanosec:   600000000}, positions: [-0.340655, -0.732982,   0.655907,   0.0769874,   0.340646,   2.04327e-06]}, {time_from_start: {sec:   0, nanosec:   700000000}, positions: [-0.400961, -0.862739,   0.77202,   0.0906163,   0.40095,   2.40483e-06]}, {time_from_start: {sec:   0, nanosec:   800000000}, positions: [-0.440352, -0.947497,   0.847866,   0.0995187,   0.44034,   2.641e-06]}, {time_from_start: {sec:   0, nanosec:   900000000}, positions: [-0.45883, -0.987254,   0.883443,   0.103695,   0.458817,   2.75178e-06]}, {time_from_start: {sec:   0, nanosec:   938350265}, positions: [-0.460367, -0.990564,   0.886404,   0.104042,   0.460355,   2.761e-06]}]}"
+#
+header:
+  frame_id: "world"
+  stamp:
+    sec:   0
+    nanosec:   0
+joint_names:
+  - "joint0"
+  - "joint1"
+  - "joint2"
+  - "joint3"
+  - "joint4"
+  - "joint5"
+points:
+  - time_from_start:
+      sec:   0
+      nanosec:   0
+    positions:
+      -   3.85448e-12
+      -   7.67134e-12
+      - -2.46014e-11
+      -   5.37737e-11
+      - -2.29149e-11
+      -   8.80711e-10
+  - time_from_start:
+      sec:   0
+      nanosec:   100000000
+    positions:
+      - -0.0104569
+      - -0.0225
+      -   0.0201341
+      -   0.00236325
+      -   0.0104567
+      -   6.3575e-08
+  - time_from_start:
+      sec:   0
+      nanosec:   200000000
+    positions:
+      - -0.0418278
+      - -0.09
+      -   0.0805363
+      -   0.00945299
+      -   0.0418267
+      -   2.51658e-07
+  - time_from_start:
+      sec:   0
+      nanosec:   300000000
+    positions:
+      - -0.0941125
+      - -0.2025
+      -   0.181207
+      -   0.0212692
+      -   0.09411
+      -   5.65129e-07
+  - time_from_start:
+      sec:   0
+      nanosec:   400000000
+    positions:
+      - -0.167311
+      - -0.36
+      -   0.322145
+      -   0.0378119
+      -   0.167307
+      -   1.00399e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   500000000
+    positions:
+      - -0.259436
+      - -0.558224
+      -   0.499526
+      -   0.0586321
+      -   0.259429
+      -   1.55632e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   600000000
+    positions:
+      - -0.340655
+      - -0.732982
+      -   0.655907
+      -   0.0769874
+      -   0.340646
+      -   2.04327e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   700000000
+    positions:
+      - -0.400961
+      - -0.862739
+      -   0.77202
+      -   0.0906163
+      -   0.40095
+      -   2.40483e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   800000000
+    positions:
+      - -0.440352
+      - -0.947497
+      -   0.847866
+      -   0.0995187
+      -   0.44034
+      -   2.641e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   900000000
+    positions:
+      - -0.45883
+      - -0.987254
+      -   0.883443
+      -   0.103695
+      -   0.458817
+      -   2.75178e-06
+  - time_from_start:
+      sec:   0
+      nanosec:   938350265
+    positions:
+      - -0.460367
+      - -0.990564
+      -   0.886404
+      -   0.104042
+      -   0.460355
+      -   2.761e-06
