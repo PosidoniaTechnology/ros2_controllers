@@ -83,8 +83,11 @@ public:
     uint get_index() const { return index_; }
     void increment(){ index_ = index_ + 1; }
     
-    bool is_at_first_point() const { return index_ == 0; }
-    bool is_at_last_point() const { return index_ == trajectory_msg_->points.size() - 1; }
+    bool is_at_first_point() const { 
+      return index_ == 0
+             && has_nontrivial_msg();}
+  
+    bool is_at_last_point() const { return index_ == (trajectory_msg_->points.size() - 1); }
     bool is_completed() const { return index_ >= trajectory_msg_->points.size(); }
 
 private:

@@ -17,7 +17,7 @@ namespace path_following_controller
 Trajectory::Trajectory() {}
 
 Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
-    :   trajectory_msg_(joint_trajectory){}
+    :   trajectory_msg_(joint_trajectory), index_(0){}
 
 bool Trajectory::sample(
     /* const interpolation_methods::InterpolationMethod interpolation_method, */
@@ -30,6 +30,7 @@ bool Trajectory::sample(
     {
         start_segment_itr = begin();
         end_segment_itr = begin();
+        return false;
     }
     output_state = JointTrajectoryPoint();
 

@@ -59,49 +59,33 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 
-#[[
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  find_package(ament_cmake_gmock REQUIRED)
-  find_package(controller_manager REQUIRED)
-  find_package(hardware_interface REQUIRED)
-  find_package(ros2_control_test_assets REQUIRED)
-
-  ament_add_gmock(test_load_path_following_controller test/test_load_path_following_controller.cpp)
-  target_include_directories(test_load_path_following_controller PRIVATE include)
-  ament_target_dependencies(
-    test_load_path_following_controller
+  set(THIS_PACKAGE_BUILD_DEPENDS
+    ament_cmake_gmock
     controller_manager
-    hardware_interface
     ros2_control_test_assets
   )
+  foreach(Dependency IN ITEMS ${THIS_PACKAGE_BUILD_DEPENDS})
+  find_package(${Dependency} REQUIRED)
+  endforeach()
 
-  add_rostest_with_parameters_gmock(test_path_following_controller test/test_path_following_controller.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/path_following_controller_params.yaml)
-  target_include_directories(test_path_following_controller PRIVATE include)
-  target_link_libraries(test_path_following_controller path_following_controller)
-  ament_target_dependencies(
-    test_path_following_controller
-    controller_interface
-    hardware_interface
+  ### loading controller
+  ament_add_gmock(test_load_path_following_controller
+    test/test_load_path_following_controller.cpp
+  )
+  ament_target_dependencies(test_load_path_following_controller 
+    ${THIS_PACKAGE_BUILD_DEPENDS}
   )
 
-  add_rostest_with_parameters_gmock(test_path_following_controller_preceeding test/test_path_following_controller_preceeding.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/path_following_controller_preceeding_params.yaml)
-  target_include_directories(test_path_following_controller_preceeding PRIVATE include)
-  target_link_libraries(test_path_following_controller_preceeding path_following_controller)
-  ament_target_dependencies(
-    test_path_following_controller_preceeding
-    controller_interface
-    hardware_interface
+  ### trajectory management
+  ament_add_gmock(test_trajectory
+    test/test_trajectory.cpp
   )
+  target_link_libraries(test_trajectory 
+    path_following_controller
+  )
+
 endif()
-]]#
 
 ament_export_include_directories(
   include
