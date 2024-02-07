@@ -193,6 +193,10 @@ private:
     size_t joint_names_size, const std::vector<double> & vector_field,
     const std::string & string_for_vector_field, size_t i, bool allow_empty) const;
 
+  void publish_state(const JointTrajectoryPoint & desired_state, 
+                     const JointTrajectoryPoint & current_state,
+                     const JointTrajectoryPoint & state_error);
+
   // fill trajectory_msg so it matches joints controlled by this controller
   // positions set to current position, velocities, accelerations and efforts to 0.0
   void fill_partial_goal(

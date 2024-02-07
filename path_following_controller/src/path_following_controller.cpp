@@ -170,8 +170,7 @@ controller_interface::return_type PathFollowingController::update(
     }
   }
 
-  // REVIEW: implement this
-  //publish_state(state_desired_, state_current_, state_error_);
+  publish_state(state_desired_, state_current_, state_error_);
   return controller_interface::return_type::OK;
 }
 
@@ -296,9 +295,6 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
   rt_publisher_ = std::make_unique<RealtimePublisher>(controller_state_publisher_);
   
   init_rt_publisher_msg();  
- 
- 
-  last_state_publish_time_ = get_node()->now();
 
   // ACTIONS
   using namespace std::placeholders;
@@ -542,6 +538,8 @@ void PathFollowingController::init_rt_publisher_msg(){
     rt_publisher_->msg_.output.effort.resize(dof_);
   }
   rt_publisher_->unlock();
+
+  last_state_publish_time_ = get_node()->now();
 }
 
 bool PathFollowingController::validate_trajectory_msg(
@@ -999,6 +997,38 @@ void PathFollowingController::preempt_active_goal()
     action_res->set__error_string("Current goal cancelled due to new incoming action.");
     active_goal->setCanceled(action_res);
     rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+  }
+}
+
+void PathFollowingController::publish_state(
+  const JointTrajectoryPoint & desired_state, const JointTrajectoryPoint & current_state,
+  const JointTrajectoryPoint & state_error)
+{
+  if (state_publisher_period_.seconds() <= 0.0)
+  {
+    return;
+  }
+
+  if (controller_state_publisher_ && rt_publisher_->trylock())
+  {
+    last_state_publish_time_ = get_node()->now();
+    rt_publisher_->msg_.header.stamp = last_state_publish_time_;
+    rt_publisher_->msg_.reference.positions = desired_state.positions;
+    rt_publisher_->msg_.reference.velocities = desired_state.velocities;
+    rt_publisher_->msg_.reference.accelerations = desired_state.accelerations;
+    rt_publisher_->msg_.feedback.positions = current_state.positions;
+    rt_publisher_->msg_.error.positions = state_error.positions;
+    if (has_velocity_state_interface_)
+    {
+      rt_publisher_->msg_.feedback.velocities = current_state.velocities;
+      rt_publisher_->msg_.error.velocities = state_error.velocities;
+    }
+    if (has_acceleration_state_interface_)
+    {
+      rt_publisher_->msg_.feedback.accelerations = current_state.accelerations;
+      rt_publisher_->msg_.error.accelerations = state_error.accelerations;
+    }
+    rt_publisher_->unlockAndPublish();
   }
 }
 
