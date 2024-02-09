@@ -28,7 +28,6 @@ endforeach()
 # Add path_following_controller library related compile commands
 generate_parameter_library(path_following_controller_parameters
   src/path_following_controller.yaml
-  include/path_following_controller/validate_path_following_controller_parameters.hpp
 )
 add_library(
   path_following_controller
@@ -68,7 +67,7 @@ if(BUILD_TESTING)
   foreach(Dependency IN ITEMS ${THIS_PACKAGE_BUILD_DEPENDS})
   find_package(${Dependency} REQUIRED)
   endforeach()
-  
+
   ### test loading controller
   ament_add_gmock(test_load_path_following_controller
     test/test_load_path_following_controller.cpp
