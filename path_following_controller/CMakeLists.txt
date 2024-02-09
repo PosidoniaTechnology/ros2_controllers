@@ -68,8 +68,8 @@ if(BUILD_TESTING)
   foreach(Dependency IN ITEMS ${THIS_PACKAGE_BUILD_DEPENDS})
   find_package(${Dependency} REQUIRED)
   endforeach()
-
-  ### loading controller
+  
+  ### test loading controller
   ament_add_gmock(test_load_path_following_controller
     test/test_load_path_following_controller.cpp
   )
@@ -77,13 +77,27 @@ if(BUILD_TESTING)
     ${THIS_PACKAGE_BUILD_DEPENDS}
   )
 
-  ### trajectory management
+  ### test trajectory management
   ament_add_gmock(test_trajectory
     test/test_trajectory.cpp
   )
   target_link_libraries(test_trajectory 
     path_following_controller
   )
+
+  
+  ### controller lifecycle test
+  ament_add_gmock(test_path_following_controller
+    test/test_path_following_controller
+  )
+  ament_target_dependencies(test_path_following_controller
+    ${THIS_PACKAGE_BUILD_DEPENDS}
+  )
+  target_link_libraries(test_path_following_controller
+    path_following_controller
+  )
+  
+
 
 endif()
 

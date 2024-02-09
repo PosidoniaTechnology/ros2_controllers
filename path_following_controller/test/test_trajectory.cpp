@@ -6,9 +6,6 @@
 // Unauthorized copying of this file, via any medium is strictly prohibited.
 // The file is considered confidential.
 
-#ifndef PATH_FOLLOWING_CONTROLLER__TEST_TRAJECTORY_HPP_
-#define PATH_FOLLOWING_CONTROLLER__TEST_TRAJECTORY_HPP_
-
 #include <gmock/gmock.h>
 
 #include "path_following_controller/trajectory.hpp"
@@ -120,6 +117,3 @@ TEST_F(TestTrajectoryFixture, sampling)
     EXPECT_EQ(expected_point.positions, full_msg->points[2].positions);
     EXPECT_TRUE(trajectory->is_completed());
 }
-
-
-#endif // PATH_FOLLOWING_CONTROLLER__TEST_TRAJECTORY_HPP_

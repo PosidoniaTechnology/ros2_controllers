@@ -542,6 +542,10 @@ void PathFollowingController::init_rt_publisher_msg(){
   last_state_publish_time_ = get_node()->now();
 }
 
+//REVIEW: should trajectory_msg_validation be done in Trajectory class, instead of validating
+// first the trajectory_msg and then the Trajectory object itself? 
+// That way the message is only validated once, in the update function, when assigning new msg.
+// (functions like has_nontrivial_msg(), has_trajectory_msg()...)
 bool PathFollowingController::validate_trajectory_msg(
   const trajectory_msgs::msg::JointTrajectory & trajectory) const
 {

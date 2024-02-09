@@ -46,6 +46,7 @@ using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 
 class PathFollowingController : public controller_interface::ControllerInterface
 {
+
 public:
   PATH_FOLLOWING_CONTROLLER__VISIBILITY_PUBLIC
   PathFollowingController();
@@ -179,9 +180,7 @@ protected:
   void goal_accepted_callback(
     std::shared_ptr<rclcpp_action::ServerGoalHandle<ActionType>> goal_handle);
 
-    
 
-private:
   // UTILS
   void compute_error_for_joint(JointTrajectoryPoint & error, int index,
                                    const JointTrajectoryPoint & current,
@@ -214,7 +213,6 @@ private:
   // True if holding position or repeating last trajectory point in case of success
   realtime_tools::RealtimeBuffer<bool> rt_is_holding_;
 
-
   void add_new_trajectory_msg(
     const std::shared_ptr<JointTrajectory> & traj_msg);
   bool contains_interface_type(
@@ -223,6 +221,8 @@ private:
   JointTrajectoryPoint & point, size_t size);
   void resize_joint_trajectory_point_command(
   JointTrajectoryPoint & point, size_t size);
+
+private:
 };
 
 }  // namespace path_following_controller
