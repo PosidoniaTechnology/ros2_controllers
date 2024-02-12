@@ -31,12 +31,14 @@ using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 
 namespace
 {
-constexpr auto NODE_SUCCESS = controller_interface::CallbackReturn::SUCCESS;
-constexpr auto NODE_ERROR = controller_interface::CallbackReturn::ERROR;
+const auto NODE_SUCCESS = controller_interface::CallbackReturn::SUCCESS;
+const auto NODE_ERROR = controller_interface::CallbackReturn::ERROR;
 const std::string POSITION = "position";
 const std::string VELOCITY = "velocity";
 const std::string ACCELERATION = "acceleration";
 const std::string EFFORT = "effort";
+
+const size_t DOF = 3;
 
 const double INITIAL_POS_JOINT1 = 1.1;
 const double INITIAL_POS_JOINT2 = 2.1;
@@ -54,7 +56,12 @@ const std::vector<std::vector<double>> THREE_POINTS_VEL = {
   {{0.01, 0.01, 0.01}}, {{0.05, 0.05, 0.05}}, {{0.06, 0.06, 0.06}}
 };
 
-const auto DEFAULT_DELAY_BETWEEN_POINTS = rclcpp::Duration(std::chrono::milliseconds(250));
+const double TOLERANCE_VIOLATED_POS_VALUE = 0.2;
+const double TOLERANCE_RESPECTED_RESPECTED_VALUE = 0.05;
+
+const auto DEFAULT_DELAY_BETWEEN_POINTS = rclcpp::Duration::from_seconds(0.25);
+// run update for the total length of one default update_rate (0.01)
+const auto SINGLE_CYCLE = rclcpp::Duration::from_seconds(0.01);
 
 }  // namespace
 
@@ -121,10 +128,21 @@ public:
 
   bool has_effort_command_interface() const { return has_effort_command_interface_; }
 
-  path_following_controller::SegmentTolerances get_tolerances() const
-    { return default_tolerances_; }
-  
+  path_following_controller::SegmentTolerances get_tolerances() const { return default_tolerances_; }
+  path_following_controller::Params get_parameters() const { return params_; }
+
   void trigger_declare_parameters() { param_listener_->declare_params(); }
+
+  JointTrajectoryPoint compute_error(
+    JointTrajectoryPoint & state_error,
+    JointTrajectoryPoint & state_current,
+    JointTrajectoryPoint & state_desired
+  ){
+    for (size_t i = 0; i < DOF; ++i){
+      compute_error_for_joint(state_error, i, state_current, state_desired);
+    }
+    return state_error;
+  }
 
   JointTrajectoryPoint get_state_feedback() { return state_current_; }
   JointTrajectoryPoint get_state_reference() { return state_desired_; }
@@ -164,7 +182,7 @@ public:
 
     // Default interface values - they will be overwritten in parameterized tests
     command_interface_types_ = {POSITION};
-    state_interface_types_ = {VELOCITY};
+    state_interface_types_ = {POSITION};
  
     node_ = std::make_shared<rclcpp::Node>("trajectory_publisher_");
     trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
@@ -261,15 +279,15 @@ public:
       state_interfaces.emplace_back(vel_state_interfaces_.back());
       state_interfaces.emplace_back(acc_state_interfaces_.back());
     }
-
     controller_->assign_interfaces(std::move(cmd_interfaces), std::move(state_interfaces));
-    return controller_->get_node()->activate();
+    
+    auto temp = controller_->get_node()->activate();
+    return temp;
   }
 
   void InitializeConfigureActivatePFC(
     rclcpp::Executor & ex,
     const std::vector<rclcpp::Parameter> & parameters = {},
-    bool does_angle_wraparound = false,
     bool do_cmd_and_state_values_differ = false,
     const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS,
     const std::vector<double> initial_vel_joints = INITIAL_VEL_JOINTS,
@@ -279,13 +297,6 @@ public:
     InitializePFC(ex, parameters);
 
     controller_->trigger_declare_parameters();
-    for (size_t i = 0; i < joint_names_.size(); ++i)
-    {
-      const std::string prefix = "gains." + joint_names_[i];
-      const rclcpp::Parameter angle_wraparound(
-        prefix + ".angle_wraparound", does_angle_wraparound);
-      controller_->get_node()->set_parameters({angle_wraparound});
-    }
 
     ConfigurePFC();
     ActivatePFC(
@@ -340,7 +351,7 @@ public:
    * have to be used from the waitSet/executor
    */
   rclcpp::Time UpdateAsyncPFC(
-    rclcpp::Duration wait_time = rclcpp::Duration::from_seconds(0.2),
+    rclcpp::Duration wait_time = rclcpp::Duration::from_seconds(0.1),
     rclcpp::Time start_time = rclcpp::Time(0, 0, RCL_STEADY_TIME),
     const rclcpp::Duration update_rate = rclcpp::Duration::from_seconds(0.01))
   {
@@ -430,17 +441,26 @@ public:
     trajectory_publisher_->publish(traj_msg);
   }
 
-  void getState(); //returns state msg
+  void setJointAngleWraparound(bool value)
+  {
+    controller_->trigger_declare_parameters();
+    for (size_t i = 0; i < DOF; ++i)
+    {
+      const std::string prefix = "gains." + joint_names_[i];
+      const rclcpp::Parameter angle_wraparound(
+        prefix + ".angle_wraparound", value);
+      controller_->get_node()->set_parameters({angle_wraparound});
+    }
+  }
+
+  void getStateMsg(); //returns state msg
+
 
   // functions with ASSERTIONS mixed in. Move to tests.
   // separate acting from assertion -> Arrange, Act, Assert
   void expectCommandPoint(){} // checks if the expected one 
   void waitAndCompareState(){}
   void expectHoldingPointDeactivated(){}
-  void compareJoints(){} // compare names of itnerfaces and joints
-
-  // examine necessity
-  void TestStatePublishRateTarget(){} //what
 
 
   std::shared_ptr<TestablePathFollowingController> controller_;
@@ -477,34 +497,19 @@ public:
   
 };
 
-class UpdateLoopFixturePFC : public FixturePFC
+
+class ParametrizedFixturePFC
+: public FixturePFC,
+  public ::testing::WithParamInterface<
+    std::tuple<std::vector<std::string>, std::vector<std::string>>>
 {
 public:
-  virtual void SetUp(){ FixturePFC::SetUp(); }
-  virtual void TearDown(){ FixturePFC::TearDown(); }
-
-  void updateController();
-  void updateControllerAsync();
-};
-
-class GoalFromTopicFixturePFC : public UpdateLoopFixturePFC
-{
-public:
-  virtual void SetUp(){ 
+  virtual void SetUp()
+  {
+    FixturePFC::SetUp();
+    command_interface_types_ = std::get<0>(GetParam());
+    state_interface_types_ = std::get<1>(GetParam());
   }
-  virtual void TearDown(){ FixturePFC::TearDown(); }
-  
-        
-  bool waitForTrajectoryFromTopic();
-  void subscribeToControllerState();
-  void publishToControllerState();
-
-  
-};
-
-class GoalFromActionFixturePFC : public UpdateLoopFixturePFC
-{
-
 };
 
 } //test_path_following_controller

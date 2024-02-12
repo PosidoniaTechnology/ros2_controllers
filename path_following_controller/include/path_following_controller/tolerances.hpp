@@ -182,12 +182,12 @@ inline bool check_state_tolerance_per_joint(
  */
 inline bool check_state_tolerance(
   size_t & dof, const trajectory_msgs::msg::JointTrajectoryPoint & state_error,
-  const std::vector<StateTolerances> & state_tolerance)
+  const std::vector<StateTolerances> & state_tolerance, bool show_errors = false)
 {
   bool tolerance_fulfilled = true;
   for (size_t index = 0; index < dof; ++index)
   {
-    if(!check_state_tolerance_per_joint(state_error, index, state_tolerance[index], false /* show_errors */))
+    if(!check_state_tolerance_per_joint(state_error, index, state_tolerance[index], show_errors))
     {
       tolerance_fulfilled = false;
     }

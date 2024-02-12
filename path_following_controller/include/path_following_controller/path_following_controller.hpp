@@ -99,9 +99,6 @@ protected:
 
   TrajectoryPointConstIter start_segment_itr_, end_segment_itr_;
 
-  // Should position errors get wrapped around for i-th joint?
-  std::vector<bool> joints_angle_wraparound_;
-
   // Tolerances for a given trajectory segment
   SegmentTolerances default_tolerances_;
 

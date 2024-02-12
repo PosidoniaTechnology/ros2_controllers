@@ -196,13 +196,6 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     return CallbackReturn::FAILURE;
   }
 
-  // Configure joint position error normalization from ROS parameters (angle_wraparound)
-  joints_angle_wraparound_.resize(dof_);
-  for (size_t i = 0; i < dof_; ++i){
-      const auto & gains = params_.gains.joints_map.at(params_.joints[i]);
-      joints_angle_wraparound_[i] = gains.angle_wraparound;
-  }
-
   // Check if only allowed interface types are used and initialize storage to avoid memory
   // allocation during activation
   if (params_.command_interfaces.empty())
@@ -370,6 +363,14 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   // parse remaining parameters
   default_tolerances_ = get_segment_tolerances(params_);
 
+  /*
+  joints_angle_wraparound_.resize(dof_);
+  for (size_t i = 0; i < dof_; ++i){
+      const auto & gains = params_.gains.joints_map.at(params_.joints[i]);
+      std::cout<<params_.gains.joints_map.at(params_.joints[i]).angle_wraparound<<std::endl;
+      joints_angle_wraparound_[i] = gains.angle_wraparound;
+  }
+  */
 
   // REVIEW is this check necessary. Can't we just use _has_x_interface flags for consistency?
   // order all joints in the storage
@@ -927,13 +928,14 @@ void PathFollowingController::sort_to_local_joint_order(
   }
 }
 
-
+// error defined as the difference between current and desired
 void PathFollowingController::compute_error_for_joint(JointTrajectoryPoint & error, int index,
                                    const JointTrajectoryPoint & current,
                                    const JointTrajectoryPoint & desired)
 {
-  // error defined as the difference between current and desired
-  if (joints_angle_wraparound_[index])
+  auto wrap_around = params_.gains.joints_map.at(
+                      params_.joints[index]).angle_wraparound;
+  if (wrap_around)
   {
     // if desired, the shortest_angular_distance is calculated, i.e., the error is
     //  normalized between -pi<error<pi

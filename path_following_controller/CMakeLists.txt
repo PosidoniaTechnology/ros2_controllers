@@ -84,18 +84,38 @@ if(BUILD_TESTING)
     path_following_controller
   )
 
-  
-  ### controller lifecycle test
-  ament_add_gmock(test_path_following_controller
-    test/test_path_following_controller
+  ### test tolerance management
+    ament_add_gmock(test_tolerances
+    test/test_tolerances.cpp
   )
-  ament_target_dependencies(test_path_following_controller
-    ${THIS_PACKAGE_BUILD_DEPENDS}
-  )
-  target_link_libraries(test_path_following_controller
+  target_link_libraries(test_tolerances 
     path_following_controller
   )
   
+      
+  ### controller lifecycle test
+  ament_add_gmock(test_controller_lifecycle
+    test/test_controller_lifecycle.cpp
+  )
+  ament_target_dependencies(test_controller_lifecycle
+    ${THIS_PACKAGE_BUILD_DEPENDS}
+  )
+  target_link_libraries(test_controller_lifecycle
+    path_following_controller
+  )
+
+
+
+  ### update loop main functionality test
+  ament_add_gmock(test_update_loop
+    test/test_update_loop.cpp
+  )
+  ament_target_dependencies(test_update_loop
+    ${THIS_PACKAGE_BUILD_DEPENDS}
+  )
+  target_link_libraries(test_update_loop
+    path_following_controller
+  )
 
 
 endif()
