@@ -474,6 +474,7 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   }
   release_interfaces();
 
+  rt_is_holding_.writeFromNonRT(true);
   subscriber_is_active_ = false;
   traj_external_point_ptr_.reset();
 

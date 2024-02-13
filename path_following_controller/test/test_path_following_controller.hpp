@@ -23,6 +23,8 @@
 #include "path_following_controller/trajectory.hpp"
 #include "path_following_controller/tolerances.hpp"
 
+using namespace testing;
+
 using PathFollowingController = path_following_controller::PathFollowingController;
 //msgs
 using ControllerStateMsg = control_msgs::msg::JointTrajectoryControllerState;
@@ -56,8 +58,7 @@ const std::vector<std::vector<double>> THREE_POINTS_VEL = {
   {{0.01, 0.01, 0.01}}, {{0.05, 0.05, 0.05}}, {{0.06, 0.06, 0.06}}
 };
 
-const double TOLERANCE_VIOLATED_POS_VALUE = 0.2;
-const double TOLERANCE_RESPECTED_RESPECTED_VALUE = 0.05;
+const double WAYPOINT_TOLERANCE = 0.1;
 
 const auto DEFAULT_DELAY_BETWEEN_POINTS = rclcpp::Duration::from_seconds(0.25);
 // run update for the total length of one default update_rate (0.01)
@@ -82,7 +83,7 @@ public:
     }
     return ret;
   }
-
+  
   /**
    * @brief wait_for_trajectory block until a new JointTrajectory is received.
    * Requires that the executor is not spinned elsewhere between the
@@ -149,7 +150,9 @@ public:
   JointTrajectoryPoint get_state_error() { return state_error_; }
   
   bool has_active_traj() const { return has_active_trajectory(); }
+  bool validate_traj_msg(JointTrajectory & msg) const { return validate_trajectory_msg(msg); }
 
+  // trivial = only one point in trajectory
   bool has_trivial_traj() const
   {
     return has_active_trajectory() && traj_external_point_ptr_->has_nontrivial_msg() == false;
@@ -215,7 +218,9 @@ public:
     {
       FAIL();
     }
+
     executor.add_node(controller_->get_node()->get_node_base_interface());
+
   }
 
   rclcpp_lifecycle::State ConfigurePFC(){
@@ -451,6 +456,61 @@ public:
         prefix + ".angle_wraparound", value);
       controller_->get_node()->set_parameters({angle_wraparound});
     }
+  }
+
+  // returns a trajectory with one point where the joint names
+  // are in a different order than state_interfaces
+  JointTrajectory createJumbledTrajectoryMsg(
+    std::vector<double> position_in,
+    std::vector<double> velocity_in)
+  {
+    JointTrajectory msg_out;
+    std::vector<size_t> jumble_map = {1, 2, 0};
+
+    std::vector<std::string> jumbled_names;
+    jumbled_names.resize(DOF);
+
+    for (size_t i = 0; i < DOF; i++)
+      jumbled_names[i] = joint_names_[ jumble_map[i] ];
+
+    msg_out.points.resize(1);
+    msg_out.joint_names = jumbled_names;
+    msg_out.points[0].positions.resize(DOF);
+    for (size_t i = 0; i < DOF; i++)
+      msg_out.points[0].positions[i] = position_in[ jumble_map[i] ];
+
+    msg_out.points[0].velocities.resize(DOF);
+    for (size_t i = 0; i < DOF; i++)
+      msg_out.points[0].velocities[i] = velocity_in[ jumble_map[i] ];
+
+    msg_out.points[0].accelerations.resize(DOF);
+    
+    return msg_out;
+  }
+
+  // returns a trajectory with one point with DOF-1
+  // joint states defined
+  JointTrajectory createPartialJointMsg(
+    std::vector<double> position_in,
+    std::vector<double> velocity_in)
+  {
+    JointTrajectory msg_out;
+
+    const std::vector<std::string> partial_names = { joint_names_[0], joint_names_[1] };
+
+    msg_out.points.resize(1);
+    msg_out.joint_names = partial_names;
+    msg_out.points[0].positions.resize(DOF-1);
+    for (size_t i = 0; i < DOF-1; i++)
+      msg_out.points[0].positions[i] = position_in[i];
+
+    msg_out.points[0].velocities.resize(DOF-1);
+    for (size_t i = 0; i < DOF-1; i++)
+      msg_out.points[0].velocities[i] = velocity_in[i];
+
+    msg_out.points[0].accelerations.resize(DOF-1);
+    
+    return msg_out;
   }
 
   void getStateMsg(); //returns state msg
