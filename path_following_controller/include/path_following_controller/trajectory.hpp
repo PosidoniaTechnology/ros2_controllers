@@ -1,10 +1,12 @@
 // Copyright (c) 2024, Posidonia Technology d.o.o.
 // All rights reserved.
 //
-// Proprietary License
+// 
+// Apache License, Version 2.0
 //
 // Unauthorized copying of this file, via any medium is strictly prohibited.
 // The file is considered confidential.
+
 
 #ifndef PATH_FOLLOWING_CONTROLLER__TRAJECTORY_HPP_
 #define PATH_FOLLOWING_CONTROLLER__TRAJECTORY_HPP_
