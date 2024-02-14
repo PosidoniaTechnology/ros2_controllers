@@ -42,17 +42,6 @@ path_following_controller:
     default_value: false,
     description: "Goals with partial set of joints are allowed",
   }
-  open_loop_control: {
-    type: bool,
-    default_value: false,
-    description: "Run the controller in open-loop, i.e., read hardware states only when starting controller. This is useful when robot is not exactly following the commanded trajectory.",
-    read_only: true,
-  }
-  allow_integration_in_goal_trajectories: {
-    type: bool,
-    default_value: false,
-    description: "Allow integration in goal trajectories to accept goals without position or velocity specified",
-  }
   state_publish_rate: {
     type: double,
     default_value: 50.0,
@@ -70,47 +59,8 @@ path_following_controller:
       gt_eq: [0.1]
     }
   }
-  interpolation_method: {
-    type: string,
-    default_value: "splines",
-    description: "The type of interpolation to use, if any",
-    read_only: true,
-    validation: {
-      one_of<>: [["splines", "none"]],
-    }
-  }
-  allow_nonzero_velocity_at_trajectory_end: {
-    type: bool,
-    default_value: true,
-    description: "If false, the last velocity point has to be zero or the goal will be rejected",
-  }
   gains:
     __map_joints:
-      p: {
-        type: double,
-        default_value: 0.0,
-        description: "Proportional gain for PID"
-      }
-      i: {
-        type: double,
-        default_value: 0.0,
-        description: "Integral gain for PID"
-      }
-      d: {
-        type: double,
-        default_value: 0.0,
-        description: "Derivative gain for PID"
-      }
-      i_clamp: {
-        type: double,
-        default_value: 0.0,
-        description: "Integral clamp. Symmetrical in both positive and negative direction."
-      }
-      ff_velocity_scale: {
-        type: double,
-        default_value: 0.0,
-        description: "Feed-forward scaling of velocity."
-      }
       angle_wraparound: {
         type: bool,
         default_value: false,

@@ -170,11 +170,10 @@ TEST_F(FixturePFC, traj_msg_joint_order_different_from_interfaces)
     rclcpp::executors::MultiThreadedExecutor ex;
     InitializeConfigureActivatePFC(ex);
 
-    const JointTrajectory jumbled_msg = createJumbledTrajectoryMsg(THREE_POINTS_POS[0],
-                                                                   THREE_POINTS_VEL[0]);                                              
+    const JointTrajectory jumbled_msg = createJumbledTrajectoryMsg(THREE_POINTS_POS[0]);                                              
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            { jumbled_msg.points[0].positions  }, 
-                           { jumbled_msg.points[0].velocities },
+                           {},
                            jumbled_msg.joint_names);
     controller_->wait_for_trajectory(ex);
     UpdatePFC( SINGLE_CYCLE );
@@ -192,8 +191,7 @@ TEST_F(FixturePFC, partial_joints_traj_rejected_when_partial_joints_goal_not_all
     // allow_partial_joints_goal = false; by default
 
     // assemble a one-point partial goal msg
-    JointTrajectory msg = createPartialJointMsg(THREE_POINTS_POS[0],
-                                                THREE_POINTS_VEL[0]);
+    JointTrajectory msg = createPartialJointMsg(THREE_POINTS_POS[0]);
 
     const bool is_accepted = controller_->validate_traj_msg(msg);
     EXPECT_FALSE(is_accepted);
@@ -208,8 +206,7 @@ TEST_F(FixturePFC, partial_joints_traj_accepted_when_partial_joints_goal_allowed
     ActivatePFC();
 
     // assemble a one-point partial goal msg
-    JointTrajectory msg = createPartialJointMsg(THREE_POINTS_POS[0],
-                                                THREE_POINTS_VEL[0]);
+    JointTrajectory msg = createPartialJointMsg(THREE_POINTS_POS[0]);
 
     const bool is_accepted = controller_->validate_traj_msg(msg);
     EXPECT_TRUE(is_accepted);

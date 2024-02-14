@@ -603,18 +603,15 @@ bool PathFollowingController::validate_trajectory_msg(
     }
   }
 
-  if (!params_.allow_nonzero_velocity_at_trajectory_end)
+  for (size_t i = 0; i < trajectory.points.back().velocities.size(); ++i)
   {
-    for (size_t i = 0; i < trajectory.points.back().velocities.size(); ++i)
+    if (fabs(trajectory.points.back().velocities.at(i)) > std::numeric_limits<float>::epsilon())
     {
-      if (fabs(trajectory.points.back().velocities.at(i)) > std::numeric_limits<float>::epsilon())
-      {
-        RCLCPP_ERROR(
-          get_node()->get_logger(),
-          "Velocity of last trajectory point of joint %s is not zero: %.15f",
-          trajectory.joint_names.at(i).c_str(), trajectory.points.back().velocities.at(i));
-        return false;
-      }
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Velocity of last trajectory point of joint %s is not zero: %.15f",
+        trajectory.joint_names.at(i).c_str(), trajectory.points.back().velocities.at(i));
+      return false;
     }
   }
 

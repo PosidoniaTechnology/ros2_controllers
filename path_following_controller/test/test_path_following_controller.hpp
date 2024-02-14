@@ -57,7 +57,7 @@ const std::vector<std::vector<double>> THREE_POINTS_POS = {
   {{3.3, 4.4, 5.5}}, {{7.7, 8.8, 9.9}}, {{10.10, 11.11, 12.12}}
 };
 const std::vector<std::vector<double>> THREE_POINTS_VEL = {
-  {{0.01, 0.01, 0.01}}, {{0.05, 0.05, 0.05}}, {{0.06, 0.06, 0.06}}
+  {{0.01, 0.01, 0.01}}, {{0.05, 0.05, 0.05}}, {{0.0, 0.0, 0.0}}
 };
 
 const double WAYPOINT_TOLERANCE = 0.1;
@@ -459,7 +459,7 @@ public:
   // are in a different order than state_interfaces
   JointTrajectory createJumbledTrajectoryMsg(
     std::vector<double> position_in,
-    std::vector<double> velocity_in)
+    std::vector<double> velocity_in = {})
   {
     JointTrajectory msg_out;
     std::vector<size_t> jumble_map = {1, 2, 0};
@@ -477,7 +477,7 @@ public:
       msg_out.points[0].positions[i] = position_in[ jumble_map[i] ];
 
     msg_out.points[0].velocities.resize(DOF);
-    for (size_t i = 0; i < DOF; i++)
+    for (size_t i = 0; i < velocity_in.size(); i++)
       msg_out.points[0].velocities[i] = velocity_in[ jumble_map[i] ];
 
     msg_out.points[0].accelerations.resize(DOF);
@@ -489,7 +489,7 @@ public:
   // joint states defined
   JointTrajectory createPartialJointMsg(
     std::vector<double> position_in,
-    std::vector<double> velocity_in)
+    std::vector<double> velocity_in = {})
   {
     JointTrajectory msg_out;
 
@@ -501,23 +501,17 @@ public:
     for (size_t i = 0; i < DOF-1; i++)
       msg_out.points[0].positions[i] = position_in[i];
 
-    msg_out.points[0].velocities.resize(DOF-1);
-    for (size_t i = 0; i < DOF-1; i++)
-      msg_out.points[0].velocities[i] = velocity_in[i];
+    if(!velocity_in.empty())
+    {
+      msg_out.points[0].velocities.resize(DOF-1);
+      for (size_t i = 0; i < DOF-1; i++)
+        msg_out.points[0].velocities[i] = velocity_in[i];
 
-    msg_out.points[0].accelerations.resize(DOF-1);
-    
+      msg_out.points[0].accelerations.resize(DOF-1);
+    }
+
     return msg_out;
   }
-
-  void getStateMsg(); //returns state msg
-
-
-  // functions with ASSERTIONS mixed in. Move to tests.
-  // separate acting from assertion -> Arrange, Act, Assert
-  void expectCommandPoint(){} // checks if the expected one 
-  void waitAndCompareState(){}
-  void expectHoldingPointDeactivated(){}
 
 
   std::shared_ptr<TestablePathFollowingController> controller_;
