@@ -24,7 +24,7 @@ namespace
     using namespace path_following_controller;
 
     // returns true if tolerances are the same
-    bool compareStateTolerances(size_t dof,
+    bool compareWaypointTolerances(size_t dof,
                 std::vector<StateTolerances> tol1,
                 std::vector<StateTolerances> tol2)
     {
@@ -55,7 +55,7 @@ TEST_F(FixturePFC, tolerances_read_from_parameters)
 
     for (size_t i = 0; i < DOF; i++)
     {      
-        ASSERT_EQ(current_tolerances.state_tolerance.at(i).position, 0.0);
+        ASSERT_EQ(current_tolerances.waypoint.at(i).position, 0.0);
     }
 }
 
@@ -69,18 +69,18 @@ TEST_F(FixturePFC, tolerances_update_dynamically)
     auto starting_tolerances = controller_->get_tolerances();
 
     std::vector<rclcpp::Parameter> new_parameters{
-        rclcpp::Parameter("constraints.joint1.trajectory", 1.0),
-        rclcpp::Parameter("constraints.joint2.trajectory", 2.0),
-        rclcpp::Parameter("constraints.joint3.trajectory", 3.0)};
+        rclcpp::Parameter("constraints.joint1.waypoint", 1.0),
+        rclcpp::Parameter("constraints.joint2.waypoint", 2.0),
+        rclcpp::Parameter("constraints.joint3.waypoint", 3.0)};
     controller_->get_node()->set_parameters(new_parameters);
 
     UpdateAsyncPFC();
 
     auto updated_tolerances = controller_->get_tolerances();
 
-    ASSERT_FALSE(compareStateTolerances(DOF,
-        starting_tolerances.state_tolerance,
-        updated_tolerances.state_tolerance));   
+    ASSERT_FALSE(compareWaypointTolerances(DOF,
+                                        starting_tolerances.waypoint,
+                                        updated_tolerances.waypoint));   
 }
 
 TEST_F(FixturePFC, state_reference_propagates_to_feedback_properly)
@@ -236,7 +236,7 @@ TEST_F(FixturePFC, reference_point_repeated_next_cycle_on_tolerance_fail)
 {
     rclcpp::executors::MultiThreadedExecutor ex;
     // constraint set for joint1
-    rclcpp::Parameter joint1_tolerance_set("constraints.joint1.trajectory", 0.2);
+    rclcpp::Parameter joint1_tolerance_set("constraints.joint1.waypoint", 0.2);
     InitializePFC(ex, {joint1_tolerance_set});
     ConfigurePFC();
     ActivatePFC();

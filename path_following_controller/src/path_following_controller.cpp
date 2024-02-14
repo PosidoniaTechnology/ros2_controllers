@@ -124,7 +124,7 @@ controller_interface::return_type PathFollowingController::update(
     
     /////////// CHECK TOLERANCES
     if (*(rt_is_holding_.readFromRT()) == false)
-      is_tolerance_violated = !check_state_tolerance(dof_, state_error_, default_tolerances_.state_tolerance);
+      is_tolerance_violated = !check_waypoint_tolerance(dof_, state_error_, default_tolerances_.waypoint);
 
     ///// INCREMENT?
     if(!is_tolerance_violated)

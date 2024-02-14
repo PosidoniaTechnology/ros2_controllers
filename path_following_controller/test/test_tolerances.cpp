@@ -57,10 +57,7 @@ class TolerancesFixture : public testing::Test
             {
                 std::string joint_name = JOINT_NAMES[i];
                 params_.joints[i] = joint_name;
-                params_.constraints.joints_map[joint_name] = {
-                    WAYPOINT_TOLERANCE,
-                    0.0
-                };
+                params_.constraints.joints_map[joint_name] = { WAYPOINT_TOLERANCE };
             }
         }
 
@@ -93,7 +90,7 @@ class TolerancesFixture : public testing::Test
 TEST_F(TolerancesFixture, gets_segment_position_tolerances_from_params)
 {
     // testing only waypoint position tolerance
-    for (auto &&state_tolerance : tolerances_.state_tolerance)
+    for (auto &&state_tolerance : tolerances_.waypoint)
     {
         state_tolerance = DEFAULT_STATE_TOLREANCE;
     }
@@ -101,8 +98,8 @@ TEST_F(TolerancesFixture, gets_segment_position_tolerances_from_params)
     auto tolerances_read = get_segment_tolerances(params_);
 
     ASSERT_TRUE(compareWaypointTolerances(
-        tolerances_read.state_tolerance,
-        tolerances_.state_tolerance
+        tolerances_read.waypoint,
+        tolerances_.waypoint
         ));    
 }
 
@@ -114,8 +111,8 @@ TEST_F(TolerancesFixture, error_state_violates_position_tolerances)
     error_state_.positions[1] = TOLERANCE_VIOLATED_VALUE;
 
     bool show_errors = true;
-    EXPECT_FALSE(check_state_tolerance(
-        DOF, error_state_, tolerances_.state_tolerance,
+    EXPECT_FALSE(check_waypoint_tolerance(
+        DOF, error_state_, tolerances_.waypoint,
         show_errors));
 }
 
@@ -126,8 +123,8 @@ TEST_F(TolerancesFixture, error_state_respects_position_tolerances)
     // one joint violates tolerance
     error_state_.positions[1] = TOLERANCE_RESPECTED_VALUE;
 
-    EXPECT_TRUE(check_state_tolerance(
-        DOF, error_state_, tolerances_.state_tolerance));
+    EXPECT_TRUE(check_waypoint_tolerance(
+        DOF, error_state_, tolerances_.waypoint));
 }
 
 

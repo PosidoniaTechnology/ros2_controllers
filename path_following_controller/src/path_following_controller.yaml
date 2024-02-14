@@ -124,13 +124,8 @@ path_following_controller:
       description: "Velocity tolerance for at the end of the trajectory that indicates that controlled system is stopped.",
     }
     __map_joints:
-      trajectory: {
+      waypoint: {
         type: double,
         default_value: 0.0,
-        description: "Per-joint trajectory offset tolerance during movement.",
-      }
-      goal: {
-        type: double,
-        default_value: 0.0,
-        description: "Per-joint trajectory offset tolerance at the goal position.",
+        description: "Per-joint waypoint tolerance during movement.",
       }
