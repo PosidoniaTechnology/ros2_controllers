@@ -22,22 +22,20 @@ path_following_controller:
     default_value: [],
     description: "Names of command interfaces to claim",
     read_only: true,
-    #validation: {
-    #  unique<>: null,
-    #  subset_of<>: [["position", "velocity", "acceleration", "effort",]],
-    #  "joint_trajectory_controller::command_interface_type_combinations": null,
-    #}
+    validation: {
+      unique<>: null,
+      subset_of<>: [["position"]]
+    }
   }
   state_interfaces: {
     type: string_array,
     default_value: [],
     description: "Names of state interfaces to claim",
     read_only: true,
-    #validation: {
-    #  unique<>: null,
-    #  subset_of<>: [["position", "velocity", "acceleration",]],
-    #  "joint_trajectory_controller::state_interface_type_combinations": null,
-    #}
+    validation: {
+      unique<>: null,
+      subset_of<>: [["position", "velocity", "acceleration",]]
+    }
   }
   allow_partial_joints_goal: {
     type: bool,
