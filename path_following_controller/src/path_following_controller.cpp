@@ -94,7 +94,6 @@ controller_interface::return_type PathFollowingController::update(
 
 
   ///////////////// UPDATE CURRENT STATE
-  state_current_.time_from_start.set__sec(0);
   read_state_from_state_interfaces(state_current_);
 
 
@@ -103,7 +102,7 @@ controller_interface::return_type PathFollowingController::update(
     bool is_tolerance_violated = false;
 
     //////// SAMPLE NEXT TRAJECTORY
-    traj_external_point_ptr_->sample(state_desired_, start_segment_itr_, end_segment_itr_);
+    traj_external_point_ptr_->sample(state_desired_);
 
     ///////////////// WRITE TO HARDWARE
     auto assign_interface_from_point =
@@ -410,7 +409,7 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   subscriber_is_active_ = true;
   last_state_publish_time_ = get_node()->now();
 
-  // REVIEW: What is meant by restart? Move to utils
+  // REVIEW: Move to utils
   // Handle restart of controller by reading from commands if those are not NaN (a controller was
   // running already)
   trajectory_msgs::msg::JointTrajectoryPoint state;
@@ -881,6 +880,39 @@ void PathFollowingController::fill_partial_goal(
   }
 }
 
+// REVIEW: MOVE TO UTILS. Maybe move "sort_to_local_joint_order()" along with trajectory validation to trajectory.hpp
+/**
+ * \return The map between \p t1 indices (implicitly encoded in return vector indices) to \p t2
+ * indices. If \p t1 is <tt>"{C, B}"</tt> and \p t2 is <tt>"{A, B, C, D}"</tt>, the associated
+ * mapping vector is <tt>"{2, 1}"</tt>.
+ */
+template <class T>
+inline std::vector<size_t> mapping(const T & t1, const T & t2)
+{
+  // t1 must be a subset of t2
+  if (t1.size() > t2.size())
+  {
+    return std::vector<size_t>();
+  }
+
+  std::vector<size_t> mapping_vector(t1.size());  // Return value
+  for (auto t1_it = t1.begin(); t1_it != t1.end(); ++t1_it)
+  {
+    auto t2_it = std::find(t2.begin(), t2.end(), *t1_it);
+    if (t2.end() == t2_it)
+    {
+      return std::vector<size_t>();
+    }
+    else
+    {
+      const size_t t1_dist = std::distance(t1.begin(), t1_it);
+      const size_t t2_dist = std::distance(t2.begin(), t2_it);
+      mapping_vector[t1_dist] = t2_dist;
+    }
+  }
+  return mapping_vector;
+}
+
 void PathFollowingController::sort_to_local_joint_order(
   std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg)
 {
@@ -992,7 +1024,8 @@ std::shared_ptr<JointTrajectory> PathFollowingController::set_success_trajectory
 
 bool PathFollowingController::has_active_trajectory() const
 {
-  return traj_external_point_ptr_ != nullptr && traj_external_point_ptr_->has_trajectory_msg();
+  return traj_external_point_ptr_ != nullptr && 
+         traj_external_point_ptr_->get_trajectory_msg() != nullptr;
 }
 
 void PathFollowingController::preempt_active_goal()

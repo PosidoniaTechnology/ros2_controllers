@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.8)
-project(path_following_controller)
+cmake_minimum_required(VERSION 3.16)
+project(path_following_controller LANGUAGES CXX)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+if(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
+  add_compile_options(-Wall -Wextra)
 endif()
 
 # find dependencies
@@ -85,14 +85,13 @@ if(BUILD_TESTING)
   )
 
   ### test tolerance management
-    ament_add_gmock(test_tolerances
+  ament_add_gmock(test_tolerances
     test/test_tolerances.cpp
   )
   target_link_libraries(test_tolerances 
     path_following_controller
   )
   
-      
   ### controller lifecycle test
   ament_add_gmock(test_controller_lifecycle
     test/test_controller_lifecycle.cpp
@@ -103,8 +102,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_controller_lifecycle
     path_following_controller
   )
-
-
 
   ### update loop main functionality test
   ament_add_gmock(test_update_loop

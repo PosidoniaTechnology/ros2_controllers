@@ -154,15 +154,10 @@ public:
   bool has_active_traj() const { return has_active_trajectory(); }
   bool validate_traj_msg(JointTrajectory & msg) const { return validate_trajectory_msg(msg); }
 
-  // trivial = only one point in trajectory
-  bool has_trivial_traj() const
-  {
-    return has_active_trajectory() && traj_external_point_ptr_->has_nontrivial_msg() == false;
-  }
-
-  bool has_nontrivial_traj()
-  {
-    return has_active_trajectory() && traj_external_point_ptr_->has_nontrivial_msg();
+  // trivial trajectory = only one point in trajectory
+  bool has_trivial_traj() const {
+    return has_active_trajectory() && 
+            traj_external_point_ptr_->get_trajectory_msg()->points.size() == 1;
   }
 
   bool is_holding() { return *(rt_is_holding_.readFromRT()); }

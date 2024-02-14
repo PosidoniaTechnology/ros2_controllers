@@ -97,8 +97,6 @@ protected:
   JointTrajectoryPoint state_error_;
   JointTrajectoryPoint last_commanded_state_;
 
-  TrajectoryPointConstIter start_segment_itr_, end_segment_itr_;
-
   // Tolerances for a given trajectory segment
   SegmentTolerances default_tolerances_;
 
