@@ -14,21 +14,21 @@
 #include <memory>
 #include <vector>
 
-// TODO: ADD INTERPOLATION functionality
-//#include "path_following_controller/interpolation_methods.hpp"
 #include "path_following_controller/visibility_control.h"
 #include "rclcpp/time.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 
-using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
-using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
+
 
 namespace path_following_controller
 {
 
 class Trajectory
 {
+
+using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 
 public:
     /**

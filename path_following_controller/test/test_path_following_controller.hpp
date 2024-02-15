@@ -176,7 +176,7 @@ public:
     state_interface_types_ = {POSITION};
  
     node_ = std::make_shared<rclcpp::Node>("trajectory_publisher_");
-    trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
+    trajectory_publisher_ = node_->create_publisher<JointTrajectory>(
       controller_name_ + "/joint_trajectory", rclcpp::SystemDefaultsQoS());
   }
 
@@ -365,7 +365,7 @@ public:
       ++wait_count;
     }
 
-    trajectory_msgs::msg::JointTrajectory traj_msg;
+    JointTrajectory traj_msg;
     if (joint_names.empty())
     {
       traj_msg.joint_names = {
@@ -506,10 +506,10 @@ public:
   rclcpp::Node::SharedPtr node_;
 
   // review necessity
-  rclcpp::Subscription<control_msgs::msg::JointTrajectoryControllerState>::SharedPtr
+  rclcpp::Subscription<ControllerStateMsg>::SharedPtr
     state_subscriber_;
   mutable std::mutex state_mutex_;
-  std::shared_ptr<control_msgs::msg::JointTrajectoryControllerState> state_msg_;
+  std::shared_ptr<ControllerStateMsg> state_msg_;
   
 };
 

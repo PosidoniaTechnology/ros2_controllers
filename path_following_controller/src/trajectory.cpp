@@ -39,7 +39,7 @@ bool Trajectory::sample(JointTrajectoryPoint & output_state)
     return true;
 }
 
-void Trajectory::update(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
+void Trajectory::update(std::shared_ptr<JointTrajectory> joint_trajectory)
 {
     trajectory_msg_ = joint_trajectory;
     reset_index();

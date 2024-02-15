@@ -21,6 +21,9 @@
 
 #include "lifecycle_msgs/msg/state.hpp"
 
+using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
+using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
+
 namespace path_following_controller
 {
 PathFollowingController::PathFollowingController() 
@@ -33,28 +36,12 @@ controller_interface::CallbackReturn PathFollowingController::on_init()
     // Create the parameter listener and get the parameters
     param_listener_ = std::make_shared<ParamListener>(get_node());
     params_ = param_listener_->get_params();
-
-  /*   TODO
-    // Set interpolation method from string parameter
-    interpolation_method_ = interpolation_methods::from_string(params_.interpolation_method);
-  */
   }
   catch (const std::exception & e)
   {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
   }
-
-  /*   REVIEW NECESSITY
-  // TODO(christophfroehlich): remove deprecation warning
-  if (params_.allow_nonzero_velocity_at_trajectory_end)
-  {
-    RCLCPP_WARN(
-      get_node()->get_logger(),
-      "[Deprecated]: \"allow_nonzero_velocity_at_trajectory_end\" is set to "
-      "true. The default behavior will change to false.");
-  }
-  */
 
   return CallbackReturn::SUCCESS;
 }
@@ -240,28 +227,16 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     get_interface_list(params_.command_interfaces).c_str(),
     get_interface_list(params_.state_interfaces).c_str());
 
-  /*   TODO
-  // parse remaining parameters
-  const std::string interpolation_string =
-    get_node()->get_parameter("interpolation_method").as_string();
-  interpolation_method_ = interpolation_methods::from_string(interpolation_string);
-  RCLCPP_INFO(
-    LOGGER, "Using '%s' interpolation method.",
-    interpolation_methods::InterpolationMethodMap.at(interpolation_method_).c_str());
-  */
-
   // prepare hold_position_msg
   init_hold_position_msg();
 
   resize_joint_trajectory_point(state_current_, dof_);
-  resize_joint_trajectory_point_command(command_current_, dof_);
   resize_joint_trajectory_point(state_desired_, dof_);
   resize_joint_trajectory_point(state_error_, dof_);
-  resize_joint_trajectory_point(last_commanded_state_, dof_);
 
   // SUBSCRIBERS
   joint_command_subscriber_ =
-    get_node()->create_subscription<trajectory_msgs::msg::JointTrajectory>(
+    get_node()->create_subscription<JointTrajectory>(
       "~/joint_trajectory", rclcpp::SystemDefaultsQoS(),
       std::bind(&PathFollowingController::subscriber_callback, this, std::placeholders::_1));
   
@@ -386,16 +361,15 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
     }
   }
   traj_external_point_ptr_ = std::make_shared<Trajectory>();
-  traj_msg_external_point_ptr_.writeFromNonRT(
-    std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
+  traj_msg_external_point_ptr_.writeFromNonRT(std::shared_ptr<JointTrajectory>());
 
-  subscriber_is_active_ = true;
+
   last_state_publish_time_ = get_node()->now();
 
   // REVIEW: Move to utils
   // Handle restart of controller by reading from commands if those are not NaN (a controller was
   // running already)
-  trajectory_msgs::msg::JointTrajectoryPoint state;
+  JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
   // Initialize current state from hardware
   read_state_from_state_interfaces(state_current_);
@@ -438,7 +412,6 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   release_interfaces();
 
   rt_is_holding_.writeFromNonRT(true);
-  subscriber_is_active_ = false;
   traj_external_point_ptr_.reset();
 
   return controller_interface::CallbackReturn::SUCCESS;
@@ -448,7 +421,7 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
 
 void PathFollowingController::init_hold_position_msg()
 {
-  hold_position_msg_ptr_ = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
+  hold_position_msg_ptr_ = std::make_shared<JointTrajectory>();
   hold_position_msg_ptr_->header.stamp =
     rclcpp::Time(0.0, 0.0, get_node()->get_clock()->get_clock_type());  // start immediately
   hold_position_msg_ptr_->joint_names = params_.joints;
@@ -490,7 +463,7 @@ void PathFollowingController::init_rt_publisher_msg(){
 // That way the message is only validated once, in the update function, when assigning new msg.
 // (functions like has_nontrivial_msg(), has_trajectory_msg()...)
 bool PathFollowingController::validate_trajectory_msg(
-  const trajectory_msgs::msg::JointTrajectory & trajectory) const
+  const JointTrajectory & trajectory) const
 {
   // If partial joints goals are not allowed, goal should specify all controller joints
   if (!params_.allow_partial_joints_goal)
@@ -556,7 +529,7 @@ bool PathFollowingController::validate_trajectory_msg(
     }
   }
 
-  rclcpp::Duration previous_traj_time(0ms);
+  auto previous_traj_time = rclcpp::Duration::from_seconds(0.0);
   for (size_t i = 0; i < trajectory.points.size(); ++i)
   {
     if ((i > 0) && (rclcpp::Duration(trajectory.points[i].time_from_start) <= previous_traj_time))
@@ -618,27 +591,16 @@ bool PathFollowingController::contains_interface_type(
 }
 
 void PathFollowingController::resize_joint_trajectory_point(
-  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size)
+  JointTrajectoryPoint & point, size_t size)
 {
   point.positions.resize(size, 0.0);
-
   if (has_velocity_state_interface_)
-  {
     point.velocities.resize(size, 0.0);
-  }
   if (has_acceleration_state_interface_)
-  {
     point.accelerations.resize(size, 0.0);
-  }
-}
 
-void PathFollowingController::resize_joint_trajectory_point_command(
-  trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size)
-{
   if (has_position_command_interface_)
-  {
     point.positions.resize(size, 0.0);
-  }
 }
 
 void PathFollowingController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
@@ -661,25 +623,19 @@ void PathFollowingController::read_state_from_state_interfaces(JointTrajectoryPo
     assign_point_from_interface(state.velocities, joint_state_interface_[1]);
     // Acceleration is used only in combination with velocity
     if (has_acceleration_state_interface_)
-    {
       assign_point_from_interface(state.accelerations, joint_state_interface_[2]);
-    }
     else
-    {
-      // Make empty so the property is ignored during interpolation
       state.accelerations.clear();
-    }
   }
   else
   {
-    // Make empty so the property is ignored during interpolation
     state.velocities.clear();
     state.accelerations.clear();
   }
 }
 
 void PathFollowingController::fill_partial_goal(
-  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg) const
+  std::shared_ptr<JointTrajectory> trajectory_msg) const
 {
   // REVIEW: move this to trajectory validation and fill a partial goal there.
   // joint names in the goal are a subset of existing joints, as checked in goal_callback
@@ -773,7 +729,7 @@ inline std::vector<size_t> mapping(const T & t1, const T & t2)
 }
 
 void PathFollowingController::sort_to_local_joint_order(
-  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg)
+  std::shared_ptr<JointTrajectory> trajectory_msg)
 {
   // rearrange all points in the trajectory message based on mapping
   std::vector<size_t> mapping_vector = mapping(trajectory_msg->joint_names, params_.joints);
@@ -925,20 +881,16 @@ void PathFollowingController::publish_state(
 // CALLBACKS -----------------------------------------------------
 
 void PathFollowingController::subscriber_callback(
-  const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> msg)
+  const std::shared_ptr<JointTrajectory> msg)
 {
   if (!validate_trajectory_msg(*msg))
     return;
 
-  // http://wiki.ros.org/joint_trajectory_controller/UnderstandingTrajectoryReplacement
-  // always replace old msg with new one for now
-  if (subscriber_is_active_)
-  {
-    topic_goal_received_ = true;
-    RCLCPP_INFO(get_node()->get_logger(), "Received new message on /joint_trajectory topic");
-    add_new_trajectory_msg(msg);
-    rt_is_holding_.writeFromNonRT(false);
-  }
+  topic_goal_received_ = true;
+  RCLCPP_INFO(get_node()->get_logger(), "Received new message on /joint_trajectory topic");
+  add_new_trajectory_msg(msg);
+  rt_is_holding_.writeFromNonRT(false);
+  
 };
 
 rclcpp_action::GoalResponse PathFollowingController::goal_received_callback(
@@ -999,7 +951,7 @@ void PathFollowingController::goal_accepted_callback(
   {
     preempt_active_goal();
     auto traj_msg =
-      std::make_shared<trajectory_msgs::msg::JointTrajectory>(goal_handle->get_goal()->trajectory);
+      std::make_shared<JointTrajectory>(goal_handle->get_goal()->trajectory);
 
     add_new_trajectory_msg(traj_msg);
     rt_is_holding_.writeFromNonRT(false);
