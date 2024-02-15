@@ -25,16 +25,16 @@ using namespace testing;
 
 TEST_P(ParametrizedFixturePFC, can_configure)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializePFC(ex);
+
+  InitializePFC();
   auto state = ConfigurePFC().id();
   ASSERT_EQ(state, State::PRIMARY_STATE_INACTIVE);
 }
 
 TEST_P(ParametrizedFixturePFC, can_activate)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializePFC(ex);
+
+  InitializePFC();
   ConfigurePFC();
   auto state = ActivatePFC().id();
   ASSERT_EQ(state, State::PRIMARY_STATE_ACTIVE);
@@ -42,8 +42,8 @@ TEST_P(ParametrizedFixturePFC, can_activate)
 
 TEST_P(ParametrizedFixturePFC, can_update_and_deactivate)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
 
   auto state = DeactivatePFC().id();
@@ -52,8 +52,8 @@ TEST_P(ParametrizedFixturePFC, can_update_and_deactivate)
 
 TEST_P(ParametrizedFixturePFC, can_reactivate)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
   DeactivatePFC();
 
@@ -63,8 +63,8 @@ TEST_P(ParametrizedFixturePFC, can_reactivate)
 
 TEST_P(ParametrizedFixturePFC, can_clean_up)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
   DeactivatePFC();
 
@@ -75,16 +75,16 @@ TEST_P(ParametrizedFixturePFC, can_clean_up)
 
 TEST_P(ParametrizedFixturePFC, configured_without_activation_ignores_commands)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
 
-  InitializePFC(ex);  
+
+  InitializePFC();  
   ConfigurePFC();
 
   PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            THREE_POINTS_POS, 
                            THREE_POINTS_VEL);
 
-  controller_->wait_for_trajectory(ex);
+  controller_->wait_for_trajectory(exe_);
 
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
 
@@ -94,8 +94,8 @@ TEST_P(ParametrizedFixturePFC, configured_without_activation_ignores_commands)
 
 TEST_P(ParametrizedFixturePFC, can_clean_up_after_configure)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializePFC(ex),
+
+  InitializePFC(),
   ConfigurePFC();
 
   auto state = CleanUpPFC().id();
@@ -104,8 +104,8 @@ TEST_P(ParametrizedFixturePFC, can_clean_up_after_configure)
 
 TEST_P(ParametrizedFixturePFC, controller_holds_on_activation)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
   
   EXPECT_TRUE(controller_->is_holding());
@@ -114,13 +114,13 @@ TEST_P(ParametrizedFixturePFC, controller_holds_on_activation)
 
 TEST_P(ParametrizedFixturePFC, holds_current_position_on_deactivation)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
 
   PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                             THREE_POINTS_POS, 
                             THREE_POINTS_VEL);
-  controller_->wait_for_trajectory(ex);
+  controller_->wait_for_trajectory(exe_);
 
   // 2 cycles for current_state to arrive at first point
   UpdatePFC( SINGLE_CYCLE*2 );
@@ -140,13 +140,13 @@ TEST_P(ParametrizedFixturePFC, holds_current_position_on_deactivation)
 
 TEST_P(ParametrizedFixturePFC, can_reactivate_holding_on_point_before_deactivation)
 {
-  rclcpp::executors::MultiThreadedExecutor ex;
-  InitializeConfigureActivatePFC(ex);
+
+  InitializeConfigureActivatePFC();
 
   PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                             THREE_POINTS_POS, 
                             THREE_POINTS_VEL);
-  controller_->wait_for_trajectory(ex);
+  controller_->wait_for_trajectory(exe_);
 
   // 2 cycles for current_state to arrive at first point
   UpdatePFC( SINGLE_CYCLE*2 );

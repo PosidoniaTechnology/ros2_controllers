@@ -183,7 +183,6 @@ public:
   virtual void TearDown() override {}
 
   void InitializePFC(
-    rclcpp::Executor & executor,
     const std::vector<rclcpp::Parameter> & parameters = {})
   {
     controller_ = std::make_shared<TestablePathFollowingController>();
@@ -207,7 +206,7 @@ public:
       FAIL();
     }
 
-    executor.add_node(controller_->get_node()->get_node_base_interface());
+    exe_.add_node(controller_->get_node()->get_node_base_interface());
 
   }
 
@@ -259,12 +258,11 @@ public:
   }
 
   void InitializeConfigureActivatePFC(
-    rclcpp::Executor & ex,
     const std::vector<rclcpp::Parameter> & parameters = {},
     bool do_cmd_and_state_values_differ = false,
     const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS)
   {
-    InitializePFC(ex, parameters);
+    InitializePFC(parameters);
 
     controller_->trigger_declare_parameters();
 
@@ -478,7 +476,7 @@ public:
     return msg_out;
   }
 
-
+  rclcpp::executors::MultiThreadedExecutor exe_;
   std::shared_ptr<TestablePathFollowingController> controller_;
 
   std::string controller_name_;

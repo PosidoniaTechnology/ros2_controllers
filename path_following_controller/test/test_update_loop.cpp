@@ -46,8 +46,7 @@ namespace
 
 TEST_F(FixturePFC, tolerances_read_from_parameters)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
 
     UpdateAsyncPFC();
 
@@ -62,8 +61,7 @@ TEST_F(FixturePFC, tolerances_read_from_parameters)
 
 TEST_F(FixturePFC, tolerances_update_dynamically)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
     UpdateAsyncPFC();
 
     auto starting_tolerances = controller_->get_tolerances();
@@ -85,12 +83,11 @@ TEST_F(FixturePFC, tolerances_update_dynamically)
 
 TEST_F(FixturePFC, state_reference_propagates_to_feedback_properly)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            THREE_POINTS_POS, 
                            THREE_POINTS_VEL);
-    controller_->wait_for_trajectory(ex);
+    controller_->wait_for_trajectory(exe_);
 
     UpdatePFC( (SINGLE_CYCLE*2) );
     auto state_reference = controller_->get_state_reference();
@@ -106,12 +103,11 @@ TEST_F(FixturePFC, state_reference_propagates_to_feedback_properly)
 
 TEST_F(FixturePFC, error_calculation_works)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            THREE_POINTS_POS, 
                            THREE_POINTS_VEL);
-    controller_->wait_for_trajectory(ex);
+    controller_->wait_for_trajectory(exe_);
 
     UpdatePFC( SINGLE_CYCLE );
     JointTrajectoryPoint state_reference = controller_->get_state_reference();
@@ -133,8 +129,7 @@ TEST_F(FixturePFC, error_calculation_works)
 
 TEST_F(FixturePFC, position_error_wraps_around_when_configured)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializePFC(ex);
+    InitializePFC();
     // angle_wraparound doesn't update dynamically,
     // it must be set before configuring
     setJointAngleWraparound(true);
@@ -144,7 +139,7 @@ TEST_F(FixturePFC, position_error_wraps_around_when_configured)
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            THREE_POINTS_POS, 
                            THREE_POINTS_VEL);
-    controller_->wait_for_trajectory(ex);
+    controller_->wait_for_trajectory(exe_);
     UpdatePFC( SINGLE_CYCLE );
 
     JointTrajectoryPoint state_reference = controller_->get_state_reference();
@@ -167,15 +162,14 @@ TEST_F(FixturePFC, position_error_wraps_around_when_configured)
 
 TEST_F(FixturePFC, traj_msg_joint_order_different_from_interfaces)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
 
     const JointTrajectory jumbled_msg = createJumbledTrajectoryMsg(THREE_POINTS_POS[0]);                                              
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            { jumbled_msg.points[0].positions  }, 
                            {},
                            jumbled_msg.joint_names);
-    controller_->wait_for_trajectory(ex);
+    controller_->wait_for_trajectory(exe_);
     UpdatePFC( SINGLE_CYCLE );
 
     // ensure that the message got un-jumbled when read
@@ -186,8 +180,7 @@ TEST_F(FixturePFC, traj_msg_joint_order_different_from_interfaces)
 
 TEST_F(FixturePFC, partial_joints_traj_rejected_when_partial_joints_goal_not_allowed)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
-    InitializeConfigureActivatePFC(ex);
+    InitializeConfigureActivatePFC();
     // allow_partial_joints_goal = false; by default
 
     // assemble a one-point partial goal msg
@@ -199,9 +192,8 @@ TEST_F(FixturePFC, partial_joints_traj_rejected_when_partial_joints_goal_not_all
 
 TEST_F(FixturePFC, partial_joints_traj_accepted_when_partial_joints_goal_allowed)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
     rclcpp::Parameter partial_joints_enabled("allow_partial_joints_goal", true);
-    InitializePFC(ex, {partial_joints_enabled});
+    InitializePFC({partial_joints_enabled});
     ConfigurePFC();
     ActivatePFC();
 
@@ -214,9 +206,8 @@ TEST_F(FixturePFC, partial_joints_traj_accepted_when_partial_joints_goal_allowed
 
 TEST_F(FixturePFC, rejects_traj_with_empty_joint_names)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
     rclcpp::Parameter partial_joints_enabled("allow_partial_joints_goal", true);
-    InitializePFC(ex, {partial_joints_enabled});
+    InitializePFC({partial_joints_enabled});
     ConfigurePFC();
     ActivatePFC();
 
@@ -231,17 +222,16 @@ TEST_F(FixturePFC, rejects_traj_with_empty_joint_names)
 
 TEST_F(FixturePFC, reference_point_repeated_next_cycle_on_tolerance_fail)
 {
-    rclcpp::executors::MultiThreadedExecutor ex;
     // constraint set for joint1
     rclcpp::Parameter joint1_tolerance_set("constraints.joint1.waypoint", 0.2);
-    InitializePFC(ex, {joint1_tolerance_set});
+    InitializePFC({joint1_tolerance_set});
     ConfigurePFC();
     ActivatePFC();
 
     PublishToJointTrajectory(DEFAULT_DELAY_BETWEEN_POINTS,
                            THREE_POINTS_POS, 
                            THREE_POINTS_VEL);
-    controller_->wait_for_trajectory(ex);
+    controller_->wait_for_trajectory(exe_);
 
     // after one cycle, reference is at first point, but the tolerance is violated
     // after two cycles, expect that reference repeats
@@ -256,8 +246,6 @@ TEST_F(FixturePFC, reference_point_repeated_next_cycle_on_tolerance_fail)
     ASSERT_THAT(state_reference.positions,
         ElementsAreArray(THREE_POINTS_POS[1]));
 }
-
-
 
 int main(int argc, char ** argv)
 {
