@@ -148,7 +148,7 @@ public:
   // trivial trajectory = only one point in trajectory
   bool has_trivial_traj() const {
     return has_active_trajectory() && 
-            traj_external_point_ptr_->get_trajectory_msg()->points.size() == 1;
+            current_trajectory_->get_trajectory_msg()->points.size() == 1;
   }
 
   bool is_holding() { return *(rt_is_holding_.readFromRT()); }

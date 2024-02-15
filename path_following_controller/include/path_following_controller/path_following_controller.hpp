@@ -83,9 +83,9 @@ protected:
   std::shared_ptr<path_following_controller::ParamListener> param_listener_;
   path_following_controller::Params params_;
 
-  std::shared_ptr<Trajectory> traj_external_point_ptr_ = nullptr;
+  std::shared_ptr<Trajectory> current_trajectory_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<JointTrajectory>>
-    traj_msg_external_point_ptr_;
+    rt_new_trajectory_msg_;
 
   std::shared_ptr<JointTrajectory> hold_position_msg_ptr_ = nullptr;
   realtime_tools::RealtimeBuffer<bool> rt_is_holding_;
@@ -161,7 +161,7 @@ protected:
                                    const JointTrajectoryPoint & desired);
   bool has_active_trajectory() const;
   bool validate_trajectory_msg(const JointTrajectory & trajectory) const;
-  
+
 private:
   // UTILS
   void read_state_from_state_interfaces(JointTrajectoryPoint & state);
@@ -181,16 +181,20 @@ private:
   void sort_to_local_joint_order(
     std::shared_ptr<JointTrajectory> trajectory_msg);
   void preempt_active_goal();
-  std::shared_ptr<JointTrajectory> set_success_trajectory_point();
 
   void init_rt_publisher_msg();
-  void init_hold_position_msg();
+  void init_hold_msg();
   /** @brief set the current position with zero velocity and acceleration as new command
    */
-  std::shared_ptr<JointTrajectory> set_hold_position();
+  std::shared_ptr<JointTrajectory> hold_msg();
 
-  void add_new_trajectory_msg(
-    const std::shared_ptr<JointTrajectory> & traj_msg);
+  // Writes message to realtime buffer
+  inline void set_new_trajectory_msg(
+    const std::shared_ptr<JointTrajectory> & traj_msg){ rt_new_trajectory_msg_.writeFromNonRT(traj_msg); }
+
+  // Reads message from realtime buffer
+  inline std::shared_ptr<JointTrajectory> get_new_trajectory_msg(){ return *rt_new_trajectory_msg_.readFromRT(); }
+
   bool contains_interface_type(
   const std::vector<std::string> & interface_type_list, const std::string & interface_type);
   void resize_joint_trajectory_point(

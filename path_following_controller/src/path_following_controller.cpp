@@ -63,22 +63,22 @@ controller_interface::return_type PathFollowingController::update(
   // get active goal from the action server
   const auto active_goal = *rt_active_goal_.readFromRT();
 
-  // REVIEW: rewrite this logic in a nicer way, get rid of dereferencing
-  // check if there is a new goal message
-  auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
-  auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();    
+  std::shared_ptr<JointTrajectory> current_trajectory_msg = current_trajectory_->get_trajectory_msg();
+  std::shared_ptr<JointTrajectory> new_trajectory_msg = get_new_trajectory_msg();    
 
-  // Discard action goal if it is pending, but not active (still somewhere in goal_handle_timer_)
-  // or if there was a new goal received, but from topic
-  if(
-    current_external_msg != *new_external_msg 
-    && (*(rt_action_goal_pending_.readFromRT()) && !active_goal) == false)
+  bool is_goal_pending = *rt_action_goal_pending_.readFromRT();
+
+  // Discard goal if there were no new messages
+  // or if an action goal is pending, but not active it is stuck somewhere in goal_handle_timer_)
+  if(new_trajectory_msg == current_trajectory_msg ||
+    (is_goal_pending && !active_goal))
+  { /* Do nothing, discard goal */ }
+  else
   {
-    fill_partial_goal(*new_external_msg);
-    sort_to_local_joint_order(*new_external_msg);
-    traj_external_point_ptr_->update(*new_external_msg);   // resets trajectory index to 0
+    fill_partial_goal(new_trajectory_msg);
+    sort_to_local_joint_order(new_trajectory_msg);
+    current_trajectory_->update(new_trajectory_msg);
   }
-
 
   ///////////////// UPDATE CURRENT STATE
   read_state_from_state_interfaces(state_current_);
@@ -89,7 +89,7 @@ controller_interface::return_type PathFollowingController::update(
     bool is_tolerance_violated = false;
 
     //////// SAMPLE NEXT TRAJECTORY
-    traj_external_point_ptr_->sample(state_desired_);
+    current_trajectory_->sample(state_desired_);
 
     ///////////////// WRITE TO HARDWARE
     auto assign_interface_from_point =
@@ -111,7 +111,7 @@ controller_interface::return_type PathFollowingController::update(
 
     ///// INCREMENT?
     if(!is_tolerance_violated)
-      traj_external_point_ptr_->increment();
+      current_trajectory_->increment();
 
     ///////////////// FEEDBACK
     if (active_goal)
@@ -125,7 +125,7 @@ controller_interface::return_type PathFollowingController::update(
       feedback->error = state_error_;
       active_goal->setFeedback(feedback);
 
-      if (traj_external_point_ptr_->is_completed())
+      if (current_trajectory_->is_completed())
       {
         auto action_res = std::make_shared<ActionType::Result>();
         action_res->set__error_code(ActionType::Result::SUCCESSFUL);
@@ -137,18 +137,19 @@ controller_interface::return_type PathFollowingController::update(
 
         RCLCPP_INFO(get_node()->get_logger(), "Action goal reached successfully.");
 
-        traj_msg_external_point_ptr_.reset();
-        traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
+        // bring this into set_new_trajectory_msg, so it is one function
+        rt_new_trajectory_msg_.reset();
+        rt_new_trajectory_msg_.initRT(hold_msg());
       }
     }
     else if(topic_goal_received_)
     {
-      if (traj_external_point_ptr_->is_completed())
+      if (current_trajectory_->is_completed())
       {
         RCLCPP_INFO(get_node()->get_logger(), "Topic goal reached successfully.");
         topic_goal_received_ = false;
-        traj_msg_external_point_ptr_.reset();
-        traj_msg_external_point_ptr_.initRT(set_success_trajectory_point());
+        rt_new_trajectory_msg_.reset();
+        rt_new_trajectory_msg_.initRT(hold_msg());
       }
     }
   }
@@ -228,7 +229,7 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     get_interface_list(params_.state_interfaces).c_str());
 
   // prepare hold_position_msg
-  init_hold_position_msg();
+  init_hold_msg();
 
   resize_joint_trajectory_point(state_current_, dof_);
   resize_joint_trajectory_point(state_desired_, dof_);
@@ -360,8 +361,8 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
       return CallbackReturn::ERROR;
     }
   }
-  traj_external_point_ptr_ = std::make_shared<Trajectory>();
-  traj_msg_external_point_ptr_.writeFromNonRT(std::shared_ptr<JointTrajectory>());
+  current_trajectory_ = std::make_shared<Trajectory>();
+  rt_new_trajectory_msg_.writeFromNonRT(std::shared_ptr<JointTrajectory>());
 
 
   last_state_publish_time_ = get_node()->now();
@@ -375,7 +376,7 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   read_state_from_state_interfaces(state_current_);
   
   // The controller should start by holding position at the beginning of active state
-  add_new_trajectory_msg(set_hold_position());
+  set_new_trajectory_msg(hold_msg());
   rt_is_holding_.writeFromNonRT(true);
 
   return controller_interface::CallbackReturn::SUCCESS;
@@ -412,14 +413,14 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
   release_interfaces();
 
   rt_is_holding_.writeFromNonRT(true);
-  traj_external_point_ptr_.reset();
+  current_trajectory_.reset();
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
 // UTILS ----------------------------------------
 
-void PathFollowingController::init_hold_position_msg()
+void PathFollowingController::init_hold_msg()
 {
   hold_position_msg_ptr_ = std::make_shared<JointTrajectory>();
   hold_position_msg_ptr_->header.stamp =
@@ -797,31 +798,9 @@ void PathFollowingController::compute_error_for_joint(JointTrajectoryPoint & err
   }
 };
 
-void PathFollowingController::add_new_trajectory_msg(
-  const std::shared_ptr<JointTrajectory> & traj_msg)
+std::shared_ptr<JointTrajectory> PathFollowingController::hold_msg()
 {
-  traj_msg_external_point_ptr_.writeFromNonRT(traj_msg);
-}
-
-std::shared_ptr<JointTrajectory> PathFollowingController::set_hold_position()
-{
-  // Command to stay at current position
   hold_position_msg_ptr_->points[0].positions = state_current_.positions;
-
-  // set flag, otherwise tolerances will be checked with holding position too
-  rt_is_holding_.writeFromNonRT(true);
-
-  return hold_position_msg_ptr_;
-}
-
-std::shared_ptr<JointTrajectory> PathFollowingController::set_success_trajectory_point()
-{
-  // set last command to be repeated at success, no matter if it has nonzero velocity or
-  // acceleration
-  hold_position_msg_ptr_->points[0] = traj_external_point_ptr_->get_trajectory_msg()->points.back();
-  hold_position_msg_ptr_->points[0].time_from_start = rclcpp::Duration(0, 0);
-
-  // set flag, otherwise tolerances will be checked with success_trajectory_point too
   rt_is_holding_.writeFromNonRT(true);
 
   return hold_position_msg_ptr_;
@@ -829,8 +808,8 @@ std::shared_ptr<JointTrajectory> PathFollowingController::set_success_trajectory
 
 bool PathFollowingController::has_active_trajectory() const
 {
-  return traj_external_point_ptr_ != nullptr && 
-         traj_external_point_ptr_->get_trajectory_msg() != nullptr;
+  return current_trajectory_ != nullptr && 
+         current_trajectory_->get_trajectory_msg() != nullptr;
 }
 
 void PathFollowingController::preempt_active_goal()
@@ -888,7 +867,7 @@ void PathFollowingController::subscriber_callback(
 
   topic_goal_received_ = true;
   RCLCPP_INFO(get_node()->get_logger(), "Received new message on /joint_trajectory topic");
-  add_new_trajectory_msg(msg);
+  set_new_trajectory_msg(msg);
   rt_is_holding_.writeFromNonRT(false);
   
 };
@@ -935,7 +914,7 @@ rclcpp_action::CancelResponse PathFollowingController::goal_cancelled_callback(
     rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
 
     // Enter hold current position mode
-    add_new_trajectory_msg(set_hold_position());
+    set_new_trajectory_msg(hold_msg());
   }
 
   return rclcpp_action::CancelResponse::ACCEPT;
@@ -953,7 +932,7 @@ void PathFollowingController::goal_accepted_callback(
     auto traj_msg =
       std::make_shared<JointTrajectory>(goal_handle->get_goal()->trajectory);
 
-    add_new_trajectory_msg(traj_msg);
+    set_new_trajectory_msg(traj_msg);
     rt_is_holding_.writeFromNonRT(false);
   }
 
