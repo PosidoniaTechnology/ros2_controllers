@@ -89,9 +89,7 @@ TEST_P(ParametrizedFixturePFC, configured_without_activation_ignores_commands)
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
 
   // hw position == 0 because controller is not activated
-  EXPECT_EQ(0.0, joint_pos_[0]);
-  EXPECT_EQ(0.0, joint_pos_[1]);
-  EXPECT_EQ(0.0, joint_pos_[2]);
+  EXPECT_THAT(joint_pos_, Each(Eq(0.0)));
 }
 
 TEST_P(ParametrizedFixturePFC, can_clean_up_after_configure)
@@ -110,10 +108,8 @@ TEST_P(ParametrizedFixturePFC, controller_holds_on_activation)
   InitializeConfigureActivatePFC(ex);
   UpdatePFC(rclcpp::Duration::from_seconds(0.5));
   
-  EXPECT_EQ(INITIAL_POS_JOINT1, joint_pos_[0]);
-  EXPECT_EQ(INITIAL_POS_JOINT2, joint_pos_[1]);
-  EXPECT_EQ(INITIAL_POS_JOINT3, joint_pos_[2]);
   EXPECT_TRUE(controller_->is_holding());
+  EXPECT_THAT(joint_pos_, ElementsAreArray(INITIAL_POS_JOINTS));
 }
 
 TEST_P(ParametrizedFixturePFC, holds_current_position_on_deactivation)

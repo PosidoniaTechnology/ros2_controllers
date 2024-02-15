@@ -31,10 +31,6 @@ class Trajectory
 {
 
 public:
-    Trajectory();
-    explicit Trajectory(std::shared_ptr<JointTrajectory> joint_trajectory);
-
-
     /**
      * Update the \p trajectory_msg with a new trajectory and reset the \p index.
      * \param[in] joint_trajectory new trajectory
@@ -62,7 +58,7 @@ public:
 private:
     void reset_index(){ index_ = 0; }
     std::shared_ptr<JointTrajectory> trajectory_msg_;
-    uint index_;
+    uint index_ = 0;
 };
 
 } // namespace path_following_controller

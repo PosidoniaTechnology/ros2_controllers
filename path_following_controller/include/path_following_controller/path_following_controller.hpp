@@ -104,11 +104,13 @@ protected:
 
   // To reduce number of variables and to make the code shorter the interfaces are ordered in types
   // as the following constants
-  const std::vector<std::string> allowed_interface_types_ = {
+  const std::vector<std::string> allowed_command_interface_types_ = {
+    hardware_interface::HW_IF_POSITION
+  };
+  const std::vector<std::string> allowed_state_interface_types_ = {
     hardware_interface::HW_IF_POSITION,
     hardware_interface::HW_IF_VELOCITY,
     hardware_interface::HW_IF_ACCELERATION,
-    hardware_interface::HW_IF_EFFORT,
   };
   // The interfaces are defined as the types in 'allowed_interface_types_' member.
   // For convenience, for each type the interfaces are ordered so that i-th position
@@ -123,19 +125,8 @@ protected:
   bool has_acceleration_state_interface_ = false;
   //   no effort state interface
   bool has_position_command_interface_ = false;
-  bool has_velocity_command_interface_ = false;
-  bool has_acceleration_command_interface_ = false;
-  bool has_effort_command_interface_ = false;
 
   void read_state_from_state_interfaces(JointTrajectoryPoint & state);
-  /** Assign values from the command interfaces as state.
-   * This is only possible if command AND state interfaces exist for the same type,
-   *  therefore needs check for both.
-   * @param[out] state to be filled with values from command interfaces.
-   * @return true if all interfaces exists and contain non-NaN values, false otherwise.
-   */
-  bool read_state_from_command_interfaces(JointTrajectoryPoint & state);
-
 
   // SUBSCRIBERS
   bool subscriber_is_active_ = false;

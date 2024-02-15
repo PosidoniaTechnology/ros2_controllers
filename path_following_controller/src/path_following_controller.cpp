@@ -113,10 +113,6 @@ controller_interface::return_type PathFollowingController::update(
     };
     if (has_position_command_interface_)
       assign_interface_from_point(joint_command_interface_[0], state_desired_.positions);
-    if (has_velocity_command_interface_)
-      assign_interface_from_point(joint_command_interface_[1], state_desired_.velocities);
-    if (has_acceleration_command_interface_)
-      assign_interface_from_point(joint_command_interface_[2], state_desired_.accelerations);
 
     ///////////////// COMPUTE ERROR
     for (size_t index = 0; index < dof_; ++index)
@@ -204,16 +200,10 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     return CallbackReturn::FAILURE;
   }
 
-  joint_command_interface_.resize(allowed_interface_types_.size());
+  joint_command_interface_.resize(allowed_command_interface_types_.size());
 
   has_position_command_interface_ =
     contains_interface_type(params_.command_interfaces, hardware_interface::HW_IF_POSITION);
-  has_velocity_command_interface_ =
-    contains_interface_type(params_.command_interfaces, hardware_interface::HW_IF_VELOCITY);
-  has_acceleration_command_interface_ =
-    contains_interface_type(params_.command_interfaces, hardware_interface::HW_IF_ACCELERATION);
-  has_effort_command_interface_ =
-    contains_interface_type(params_.command_interfaces, hardware_interface::HW_IF_EFFORT);
   
   // Check if only allowed interface types are used and initialize storage to avoid memory
   // allocation during activation
@@ -223,7 +213,7 @@ controller_interface::CallbackReturn PathFollowingController::on_configure(
     return CallbackReturn::FAILURE;
   }
 
-  joint_state_interface_.resize(allowed_interface_types_.size());
+  joint_state_interface_.resize(allowed_state_interface_types_.size());
 
   has_position_state_interface_ =
     contains_interface_type(params_.state_interfaces, hardware_interface::HW_IF_POSITION);
@@ -363,22 +353,14 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   // parse remaining parameters
   default_tolerances_ = get_segment_tolerances(params_);
 
-  /*
-  joints_angle_wraparound_.resize(dof_);
-  for (size_t i = 0; i < dof_; ++i){
-      const auto & gains = params_.gains.joints_map.at(params_.joints[i]);
-      std::cout<<params_.gains.joints_map.at(params_.joints[i]).angle_wraparound<<std::endl;
-      joints_angle_wraparound_[i] = gains.angle_wraparound;
-  }
-  */
-
   // REVIEW is this check necessary. Can't we just use _has_x_interface flags for consistency?
   // order all joints in the storage
   for (const auto & interface : params_.command_interfaces)
   {
     auto it =
-      std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
-    auto index = std::distance(allowed_interface_types_.begin(), it);
+      std::find(allowed_command_interface_types_.begin(), 
+                allowed_command_interface_types_.end(), interface);
+    auto index = std::distance(allowed_command_interface_types_.begin(), it);
     if (!controller_interface::get_ordered_interfaces(
           command_interfaces_, command_joint_names_, interface, joint_command_interface_[index]))
     {
@@ -391,8 +373,9 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   for (const auto & interface : params_.state_interfaces)
   {
     auto it =
-      std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
-    auto index = std::distance(allowed_interface_types_.begin(), it);
+      std::find(allowed_state_interface_types_.begin(), 
+                allowed_state_interface_types_.end(), interface);
+    auto index = std::distance(allowed_state_interface_types_.begin(), it);
     if (!controller_interface::get_ordered_interfaces(
           state_interfaces_, params_.joints, interface, joint_state_interface_[index]))
     {
@@ -414,19 +397,9 @@ controller_interface::CallbackReturn PathFollowingController::on_activate(
   // running already)
   trajectory_msgs::msg::JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
-  if (read_state_from_command_interfaces(state))
-  {
-    state_current_ = state;
-    last_commanded_state_ = state;
-  }
-  else
-  {
-    // Initialize current state storage from hardware
-    read_state_from_state_interfaces(state_current_);
-    read_state_from_state_interfaces(last_commanded_state_);
-  }
-
-
+  // Initialize current state from hardware
+  read_state_from_state_interfaces(state_current_);
+  
   // The controller should start by holding position at the beginning of active state
   add_new_trajectory_msg(set_hold_position());
   rt_is_holding_.writeFromNonRT(true);
@@ -455,23 +428,13 @@ controller_interface::CallbackReturn PathFollowingController::on_deactivate(
     if (has_position_command_interface_)
       joint_command_interface_[0][index].get().set_value(
         joint_command_interface_[0][index].get().get_value());
-
-    if (has_velocity_command_interface_)
-      joint_command_interface_[1][index].get().set_value(0.0);
-
-    if (has_acceleration_command_interface_)
-      joint_command_interface_[2][index].get().set_value(0.0);
-
-    // TODO(anyone): How to halt when using effort commands?
-    if (has_effort_command_interface_)
-      joint_command_interface_[3][index].get().set_value(0.0);
   }
   
-  for (size_t index = 0; index < allowed_interface_types_.size(); ++index)
-  {
+  for (size_t index = 0; index < allowed_command_interface_types_.size(); ++index)
     joint_command_interface_[index].clear();
+  for (size_t index = 0; index < allowed_state_interface_types_.size(); ++index)
     joint_state_interface_[index].clear();
-  }
+
   release_interfaces();
 
   rt_is_holding_.writeFromNonRT(true);
@@ -493,16 +456,6 @@ void PathFollowingController::init_hold_position_msg()
   hold_position_msg_ptr_->points[0].velocities.clear();
   hold_position_msg_ptr_->points[0].accelerations.clear();
   hold_position_msg_ptr_->points[0].effort.clear();
-  if (has_velocity_command_interface_ || has_acceleration_command_interface_)
-  {
-    // add velocity, so that trajectory sampling returns velocity points in any case
-    hold_position_msg_ptr_->points[0].velocities.resize(dof_, 0.0);
-  }
-  if (has_acceleration_command_interface_)
-  {
-    // add velocity, so that trajectory sampling returns acceleration points in any case
-    hold_position_msg_ptr_->points[0].accelerations.resize(dof_, 0.0);
-  }
 }
 
 void PathFollowingController::init_rt_publisher_msg(){
@@ -526,18 +479,6 @@ void PathFollowingController::init_rt_publisher_msg(){
   if (has_position_command_interface_)
   {
     rt_publisher_->msg_.output.positions.resize(dof_);
-  }
-  if (has_velocity_command_interface_)
-  {
-    rt_publisher_->msg_.output.velocities.resize(dof_);
-  }
-  if (has_acceleration_command_interface_)
-  {
-    rt_publisher_->msg_.output.accelerations.resize(dof_);
-  }
-  if (has_effort_command_interface_)
-  {
-    rt_publisher_->msg_.output.effort.resize(dof_);
   }
   rt_publisher_->unlock();
 
@@ -680,6 +621,7 @@ void PathFollowingController::resize_joint_trajectory_point(
   trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size)
 {
   point.positions.resize(size, 0.0);
+
   if (has_velocity_state_interface_)
   {
     point.velocities.resize(size, 0.0);
@@ -697,86 +639,6 @@ void PathFollowingController::resize_joint_trajectory_point_command(
   {
     point.positions.resize(size, 0.0);
   }
-  if (has_velocity_command_interface_)
-  {
-    point.velocities.resize(size, 0.0);
-  }
-  if (has_acceleration_command_interface_)
-  {
-    point.accelerations.resize(size, 0.0);
-  }
-  if (has_effort_command_interface_)
-  {
-    point.effort.resize(size, 0.0);
-  }
-}
-
-bool PathFollowingController::read_state_from_command_interfaces(JointTrajectoryPoint & state)
-{
-  bool has_values = true;
-
-  auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
-  {
-    for (size_t index = 0; index < dof_; ++index)
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
-  };
-
-  auto interface_has_values = [](const auto & joint_interface)
-  {
-    return std::find_if(
-             joint_interface.begin(), joint_interface.end(),
-             [](const auto & interface)
-             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
-  };
-
-  // Assign values from the command interfaces as state. Therefore needs check for both.
-  // Position state interface has to exist always
-  if (has_position_command_interface_ && interface_has_values(joint_command_interface_[0]))
-  {
-    assign_point_from_interface(state.positions, joint_command_interface_[0]);
-  }
-  else
-  {
-    state.positions.clear();
-    has_values = false;
-  }
-  // velocity and acceleration states are optional
-  if (has_velocity_state_interface_)
-  {
-    if (has_velocity_command_interface_ && interface_has_values(joint_command_interface_[1]))
-    {
-      assign_point_from_interface(state.velocities, joint_command_interface_[1]);
-    }
-    else
-    {
-      state.velocities.clear();
-      has_values = false;
-    }
-  }
-  else
-  {
-    state.velocities.clear();
-  }
-  // Acceleration is used only in combination with velocity
-  if (has_acceleration_state_interface_)
-  {
-    if (has_acceleration_command_interface_ && interface_has_values(joint_command_interface_[2]))
-    {
-      assign_point_from_interface(state.accelerations, joint_command_interface_[2]);
-    }
-    else
-    {
-      state.accelerations.clear();
-      has_values = false;
-    }
-  }
-  else
-  {
-    state.accelerations.clear();
-  }
-
-  return has_values;
 }
 
 void PathFollowingController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
@@ -976,16 +838,6 @@ void PathFollowingController::compute_error_for_joint(JointTrajectoryPoint & err
   else
   {
     error.positions[index] = desired.positions[index] - current.positions[index];
-  }
-  if (
-    has_velocity_state_interface_ &&
-    (has_velocity_command_interface_ || has_effort_command_interface_))
-  {
-    error.velocities[index] = desired.velocities[index] - current.velocities[index];
-  }
-  if (has_acceleration_state_interface_ && has_acceleration_command_interface_)
-  {
-    error.accelerations[index] = desired.accelerations[index] - current.accelerations[index];
   }
 };
 

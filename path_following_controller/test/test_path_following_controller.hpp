@@ -49,9 +49,6 @@ const double INITIAL_POS_JOINT2 = 2.1;
 const double INITIAL_POS_JOINT3 = 3.1;
 const std::vector<double> INITIAL_POS_JOINTS = {
   INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
-const std::vector<double> INITIAL_VEL_JOINTS = {0.0, 0.0, 0.0};
-const std::vector<double> INITIAL_ACC_JOINTS = {0.0, 0.0, 0.0};
-const std::vector<double> INITIAL_EFF_JOINTS = {0.0, 0.0, 0.0};
 
 const std::vector<std::vector<double>> THREE_POINTS_POS = {
   {{3.3, 4.4, 5.5}}, {{7.7, 8.8, 9.9}}, {{10.10, 11.11, 12.12}}
@@ -124,12 +121,6 @@ public:
   bool has_acceleration_state_interface() const { return has_acceleration_state_interface_; }
 
   bool has_position_command_interface() const { return has_position_command_interface_; }
-
-  bool has_velocity_command_interface() const { return has_velocity_command_interface_; }
-
-  bool has_acceleration_command_interface() const { return has_acceleration_command_interface_; }
-
-  bool has_effort_command_interface() const { return has_effort_command_interface_; }
 
   path_following_controller::SegmentTolerances get_tolerances() const { return default_tolerances_; }
   path_following_controller::Params get_parameters() const { return params_; }
@@ -226,17 +217,11 @@ public:
       
   rclcpp_lifecycle::State ActivatePFC(
     bool separate_cmd_and_state_values = false,
-    const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS,
-    const std::vector<double> initial_vel_joints = INITIAL_VEL_JOINTS,
-    const std::vector<double> initial_acc_joints = INITIAL_ACC_JOINTS,
-    const std::vector<double> initial_eff_joints = INITIAL_EFF_JOINTS)
+    const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS)
   {
     std::vector<hardware_interface::LoanedCommandInterface> cmd_interfaces;
     std::vector<hardware_interface::LoanedStateInterface> state_interfaces;
     pos_cmd_interfaces_.reserve(joint_names_.size());
-    vel_cmd_interfaces_.reserve(joint_names_.size());
-    acc_cmd_interfaces_.reserve(joint_names_.size());
-    eff_cmd_interfaces_.reserve(joint_names_.size());
     pos_state_interfaces_.reserve(joint_names_.size());
     vel_state_interfaces_.reserve(joint_names_.size());
     acc_state_interfaces_.reserve(joint_names_.size());
@@ -245,12 +230,6 @@ public:
     {
       pos_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
         joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_pos_[i]));
-      vel_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_vel_[i]));
-      acc_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_ACCELERATION, &joint_acc_[i]));
-      eff_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_eff_[i]));
 
       pos_state_interfaces_.emplace_back(hardware_interface::StateInterface(
         joint_names_[i], hardware_interface::HW_IF_POSITION,
@@ -265,17 +244,9 @@ public:
       // Add to export lists and set initial values
       cmd_interfaces.emplace_back(pos_cmd_interfaces_.back());
       cmd_interfaces.back().set_value(initial_pos_joints[i]);
-      cmd_interfaces.emplace_back(vel_cmd_interfaces_.back());
-      cmd_interfaces.back().set_value(initial_vel_joints[i]);
-      cmd_interfaces.emplace_back(acc_cmd_interfaces_.back());
-      cmd_interfaces.back().set_value(initial_acc_joints[i]);
-      cmd_interfaces.emplace_back(eff_cmd_interfaces_.back());
-      cmd_interfaces.back().set_value(initial_eff_joints[i]);
       if (separate_cmd_and_state_values)
       {
         joint_state_pos_[i] = INITIAL_POS_JOINTS[i];
-        joint_state_vel_[i] = INITIAL_VEL_JOINTS[i];
-        joint_state_acc_[i] = INITIAL_ACC_JOINTS[i];
       }
       state_interfaces.emplace_back(pos_state_interfaces_.back());
       state_interfaces.emplace_back(vel_state_interfaces_.back());
@@ -291,10 +262,7 @@ public:
     rclcpp::Executor & ex,
     const std::vector<rclcpp::Parameter> & parameters = {},
     bool do_cmd_and_state_values_differ = false,
-    const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS,
-    const std::vector<double> initial_vel_joints = INITIAL_VEL_JOINTS,
-    const std::vector<double> initial_acc_joints = INITIAL_ACC_JOINTS,
-    const std::vector<double> initial_eff_joints = INITIAL_EFF_JOINTS)
+    const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS)
   {
     InitializePFC(ex, parameters);
 
@@ -303,10 +271,7 @@ public:
     ConfigurePFC();
     ActivatePFC(
       do_cmd_and_state_values_differ,
-      initial_pos_joints, 
-      initial_vel_joints, 
-      initial_acc_joints, 
-      initial_eff_joints);
+      initial_pos_joints);
   }
 
   rclcpp_lifecycle::State DeactivatePFC(){

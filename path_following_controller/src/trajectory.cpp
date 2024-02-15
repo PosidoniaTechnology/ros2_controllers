@@ -19,11 +19,6 @@ using JointTrajectory = trajectory_msgs::msg::JointTrajectory;
 namespace path_following_controller
 {
 
-Trajectory::Trajectory() {}
-
-Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
-    :   trajectory_msg_(joint_trajectory), index_(0){}
-
 bool Trajectory::sample(JointTrajectoryPoint & output_state)
 {
     THROW_ON_NULLPTR(trajectory_msg_)
