@@ -59,9 +59,7 @@ class TestTrajectoryFixture : public testing::Test
         // trivial trajectory == one point trajectory
         shared_ptr<JointTrajectory> trivial_msg;
         shared_ptr<JointTrajectory> full_msg;
-
-    private:
-        
+       
 };
 
 TEST_F(TestTrajectoryFixture, update_resets_index)

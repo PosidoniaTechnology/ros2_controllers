@@ -69,7 +69,7 @@ controller_interface::return_type PathFollowingController::update(
   bool is_goal_pending = *rt_action_goal_pending_.readFromRT();
 
   // Discard goal if there were no new messages
-  // or if an action goal is pending, but not active it is stuck somewhere in goal_handle_timer_)
+  // or if an action goal is pending, but not active (it is stuck somewhere in goal_handle_timer_)
   if(new_trajectory_msg == current_trajectory_msg ||
     (is_goal_pending && !active_goal))
   { /* Do nothing, discard goal */ }
@@ -82,15 +82,21 @@ controller_interface::return_type PathFollowingController::update(
 
   ///////////////// UPDATE CURRENT STATE
   read_state_from_state_interfaces(state_current_);
-
+    for (auto &&pos : state_current_.positions)
+        std::cout << "pos " << pos << std::endl;
+  std::cout << "====" << std::endl;
 
   if(has_active_trajectory())
-  {    
+  {   
     bool is_tolerance_violated = false;
 
     //////// SAMPLE NEXT TRAJECTORY
     current_trajectory_->sample(state_desired_);
 
+    read_state_from_state_interfaces(state_current_);
+    for (auto &&pos : state_current_.positions)
+        std::cout << "des " << pos << std::endl;
+    std::cout << "---" << std::endl;
     ///////////////// WRITE TO HARDWARE
     auto assign_interface_from_point =
     [&](const auto & command_interface, const std::vector<double> & trajectory_point)
@@ -906,7 +912,6 @@ rclcpp_action::CancelResponse PathFollowingController::goal_cancelled_callback(
     RCLCPP_INFO(
       get_node()->get_logger(), "Canceling active action goal because cancel callback received.");
 
-    //REVIEW: gather this into some remove_goal() fucntion
     // Mark the current goal as canceled
     rt_action_goal_pending_.writeFromNonRT(false);
     auto action_res = std::make_shared<ActionType::Result>();
@@ -935,7 +940,6 @@ void PathFollowingController::goal_accepted_callback(
     set_new_trajectory_msg(traj_msg);
     rt_is_holding_.writeFromNonRT(false);
   }
-
   // Update the active goal
   RealtimeGoalHandlePtr rt_goal = std::make_shared<RealtimeGoalHandle>(goal_handle);
   rt_goal->preallocated_feedback_->joint_names = params_.joints;

@@ -67,7 +67,7 @@ if(BUILD_TESTING)
   foreach(Dependency IN ITEMS ${THIS_PACKAGE_BUILD_DEPENDS})
   find_package(${Dependency} REQUIRED)
   endforeach()
-
+ #[[
   ### test loading controller
   ament_add_gmock(test_load_path_following_controller
     test/test_load_path_following_controller.cpp
@@ -111,6 +111,18 @@ if(BUILD_TESTING)
     ${THIS_PACKAGE_BUILD_DEPENDS}
   )
   target_link_libraries(test_update_loop
+    path_following_controller
+  )
+
+   ]]#
+  ### goals from action server test
+  ament_add_gmock(test_action_server
+    test/test_action_server.cpp
+  )
+  ament_target_dependencies(test_action_server
+    ${THIS_PACKAGE_BUILD_DEPENDS}
+  )
+  target_link_libraries(test_action_server
     path_following_controller
   )
 
