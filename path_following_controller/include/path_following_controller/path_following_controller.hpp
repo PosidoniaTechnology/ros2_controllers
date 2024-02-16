@@ -187,6 +187,7 @@ private:
   /** @brief set the current position with zero velocity and acceleration as new command
    */
   std::shared_ptr<JointTrajectory> hold_msg();
+  std::shared_ptr<JointTrajectory> success_msg();
 
   // Writes message to realtime buffer
   inline void set_new_trajectory_msg(

@@ -82,9 +82,6 @@ controller_interface::return_type PathFollowingController::update(
 
   ///////////////// UPDATE CURRENT STATE
   read_state_from_state_interfaces(state_current_);
-    for (auto &&pos : state_current_.positions)
-        std::cout << "pos " << pos << std::endl;
-  std::cout << "====" << std::endl;
 
   if(has_active_trajectory())
   {   
@@ -94,9 +91,7 @@ controller_interface::return_type PathFollowingController::update(
     current_trajectory_->sample(state_desired_);
 
     read_state_from_state_interfaces(state_current_);
-    for (auto &&pos : state_current_.positions)
-        std::cout << "des " << pos << std::endl;
-    std::cout << "---" << std::endl;
+
     ///////////////// WRITE TO HARDWARE
     auto assign_interface_from_point =
     [&](const auto & command_interface, const std::vector<double> & trajectory_point)
@@ -145,7 +140,7 @@ controller_interface::return_type PathFollowingController::update(
 
         // bring this into set_new_trajectory_msg, so it is one function
         rt_new_trajectory_msg_.reset();
-        rt_new_trajectory_msg_.initRT(hold_msg());
+        rt_new_trajectory_msg_.initRT(success_msg());
       }
     }
     else if(topic_goal_received_)
@@ -155,7 +150,7 @@ controller_interface::return_type PathFollowingController::update(
         RCLCPP_INFO(get_node()->get_logger(), "Topic goal reached successfully.");
         topic_goal_received_ = false;
         rt_new_trajectory_msg_.reset();
-        rt_new_trajectory_msg_.initRT(hold_msg());
+        rt_new_trajectory_msg_.initRT(success_msg());
       }
     }
   }
@@ -807,6 +802,13 @@ void PathFollowingController::compute_error_for_joint(JointTrajectoryPoint & err
 std::shared_ptr<JointTrajectory> PathFollowingController::hold_msg()
 {
   hold_position_msg_ptr_->points[0].positions = state_current_.positions;
+  rt_is_holding_.writeFromNonRT(true);
+  return hold_position_msg_ptr_;
+}
+
+std::shared_ptr<JointTrajectory> PathFollowingController::success_msg()
+{
+  hold_position_msg_ptr_->points[0]= current_trajectory_->get_trajectory_msg()->points.back();
   rt_is_holding_.writeFromNonRT(true);
 
   return hold_position_msg_ptr_;

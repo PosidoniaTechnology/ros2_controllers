@@ -137,12 +137,9 @@ protected:
 
 TEST_F(ActionClientFixturePFC, multi_point_goal_suceeds)
 {
-    StartController();
-        
+    StartController();        
     StartActionClient();
 
-    UpdatePFC(rclcpp::Duration::from_seconds(0.1));
-    
     gh_future_ = sendActionGoal(full_msg->points, 1.0, goal_options_);
 
     UpdatePFC(rclcpp::Duration::from_seconds(0.1));
@@ -158,10 +155,12 @@ TEST_F(ActionClientFixturePFC, multi_point_goal_suceeds)
     StopController();
 }
 
+/// figure out the order of starting nodes, rclcpp init so you can run multiple tests.
+
 int main(int argc, char ** argv)
 {
+  rclcpp::init(0, nullptr);
   ::testing::InitGoogleTest(&argc, argv);
-  rclcpp::init(argc, argv);
   int result = RUN_ALL_TESTS();
   return result;
 }
