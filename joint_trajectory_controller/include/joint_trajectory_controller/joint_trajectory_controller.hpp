@@ -108,6 +108,9 @@ protected:
     hardware_interface::HW_IF_VELOCITY,
     hardware_interface::HW_IF_ACCELERATION,
     hardware_interface::HW_IF_EFFORT,
+    "desired/position",
+    "desired/velocity",
+    "desired/acceleration"
   };
 
   // Preallocate variables used in the realtime update() function

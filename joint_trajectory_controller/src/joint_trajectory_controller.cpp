@@ -95,6 +95,7 @@ JointTrajectoryController::command_interface_configuration() const
       conf.names.push_back(joint_name + "/" + interface_type);
     }
   }
+  /**/
   // declare command interfaces for `desired` values
   for (const auto & joint_name : params_.joints)
   {                              // NOTE THIS! state, not command interface names
@@ -103,7 +104,7 @@ JointTrajectoryController::command_interface_configuration() const
       conf.names.push_back(joint_name + "/desired/" + interface_type);
     }
   }
-
+  
   return conf;
 }
 
@@ -441,6 +442,11 @@ controller_interface::return_type JointTrajectoryController::update(
       // or outside_goal_tolerance violated within the goal_time_tolerance
     }
   }
+  /**/
+  assign_interface_from_point(joint_command_interface_[4], state_desired_.positions);
+  assign_interface_from_point(joint_command_interface_[5], state_desired_.velocities);
+  assign_interface_from_point(joint_command_interface_[6], state_desired_.accelerations);
+  
 
   publish_state(state_desired_, state_current_, state_error_);
   return controller_interface::return_type::OK;
@@ -481,6 +487,12 @@ void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
     state.velocities.clear();
     state.accelerations.clear();
   }
+
+  std::cout<<"[state] desired/position: "<<std::endl;
+  for(auto & el : joint_state_interface_[4]){
+    std::cout<<el.get().get_value()<<"\n";
+  }
+  std::cout<<std::endl;
 }
 
 bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajectoryPoint & state)
@@ -976,7 +988,20 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
   default_tolerances_ = get_segment_tolerances(logger, params_);
 
   // order all joints in the storage
-  for (const auto & interface : params_.command_interfaces)
+  std::vector<std::string> command_interface_list = params_.command_interfaces;
+  command_interface_list.insert(command_interface_list.end(), {
+    "desired/position",
+    "desired/velocity",
+    "desired/acceleration"
+  });
+  std::vector<std::string> state_interface_list = params_.state_interfaces;
+  state_interface_list.insert(state_interface_list.end(), {
+    "desired/position",
+    "desired/velocity",
+    "desired/acceleration"
+  });
+
+  for (const auto & interface : command_interface_list)
   {
     auto it =
       std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
@@ -990,7 +1015,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
       return CallbackReturn::ERROR;
     }
   }
-  for (const auto & interface : params_.state_interfaces)
+  for (const auto & interface : state_interface_list)
   {
     auto it =
       std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
@@ -1053,6 +1078,12 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
     cmd_timeout_ = 0.0;
   }
 
+  std::cout<<"loaned command interface size: "<<joint_command_interface_.size()<<std::endl;
+  for(auto & vec : joint_command_interface_)
+    std::cout<<"\t"<<vec.size()<<std::endl;
+  std::cout<<"loaned state interface size: "<<joint_command_interface_.size()<<std::endl;
+  for(auto & vec : joint_command_interface_)
+    std::cout<<"\t"<<vec.size()<<std::endl;
   return CallbackReturn::SUCCESS;
 }
 
