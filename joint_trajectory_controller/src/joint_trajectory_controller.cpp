@@ -87,7 +87,7 @@ JointTrajectoryController::command_interface_configuration() const
       dof_);
     std::exit(EXIT_FAILURE);
   }
-  conf.names.reserve(dof_ * params_.command_interfaces.size());
+  conf.names.reserve(dof_ * 2 * params_.command_interfaces.size());
   for (const auto & joint_name : command_joint_names_)
   {
     for (const auto & interface_type : params_.command_interfaces)
@@ -95,6 +95,15 @@ JointTrajectoryController::command_interface_configuration() const
       conf.names.push_back(joint_name + "/" + interface_type);
     }
   }
+  // declare command interfaces for `desired` values
+  for (const auto & joint_name : params_.joints)
+  {                              // NOTE THIS! state, not command interface names
+    for (const auto & interface_type : params_.state_interfaces)
+    {
+      conf.names.push_back(joint_name + "/desired/" + interface_type);
+    }
+  }
+
   return conf;
 }
 
@@ -103,7 +112,7 @@ JointTrajectoryController::state_interface_configuration() const
 {
   controller_interface::InterfaceConfiguration conf;
   conf.type = controller_interface::interface_configuration_type::INDIVIDUAL;
-  conf.names.reserve(dof_ * params_.state_interfaces.size());
+  conf.names.reserve(dof_ * 2 * params_.state_interfaces.size());
   for (const auto & joint_name : params_.joints)
   {
     for (const auto & interface_type : params_.state_interfaces)
@@ -111,6 +120,16 @@ JointTrajectoryController::state_interface_configuration() const
       conf.names.push_back(joint_name + "/" + interface_type);
     }
   }
+
+  // declare state interfaces for `desired` values
+  for (const auto & joint_name : params_.joints)
+  {
+    for (const auto & interface_type : params_.state_interfaces)
+    {
+      conf.names.push_back(joint_name + "/desired/" + interface_type);
+    }
+  }
+  
   return conf;
 }
 
@@ -1136,6 +1155,12 @@ void JointTrajectoryController::publish_state(
   const JointTrajectoryPoint & desired_state, const JointTrajectoryPoint & current_state,
   const JointTrajectoryPoint & state_error)
 {
+  // each step, write to state interfaces designed for introspection
+  // then, if conditions are satisfied, publish state over topic.
+
+  // Write to state interfaces
+
+  // Publish over topic
   if (state_publisher_period_.seconds() <= 0.0)
   {
     return;
