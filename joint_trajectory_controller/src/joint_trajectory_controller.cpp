@@ -487,12 +487,6 @@ void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
     state.velocities.clear();
     state.accelerations.clear();
   }
-
-  std::cout<<"[state] desired/position: "<<std::endl;
-  for(auto & el : joint_state_interface_[4]){
-    std::cout<<el.get().get_value()<<"\n";
-  }
-  std::cout<<std::endl;
 }
 
 bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajectoryPoint & state)
@@ -1078,12 +1072,6 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
     cmd_timeout_ = 0.0;
   }
 
-  std::cout<<"loaned command interface size: "<<joint_command_interface_.size()<<std::endl;
-  for(auto & vec : joint_command_interface_)
-    std::cout<<"\t"<<vec.size()<<std::endl;
-  std::cout<<"loaned state interface size: "<<joint_command_interface_.size()<<std::endl;
-  for(auto & vec : joint_command_interface_)
-    std::cout<<"\t"<<vec.size()<<std::endl;
   return CallbackReturn::SUCCESS;
 }
 
