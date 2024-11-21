@@ -1,0 +1,81 @@
+path_following_controller:
+  joints: {
+    type: string_array,
+    default_value: [],
+    description: "Names of joints used by the controller",
+    read_only: true,
+    validation: {
+      unique<>: null,
+    }
+  }
+  command_joints: {
+    type: string_array,
+    default_value: [],
+    description: "Names of the commanding joints used by the controller",
+    read_only: true,
+    validation: {
+      unique<>: null,
+    }
+  }
+  command_interfaces: {
+    type: string_array,
+    default_value: [],
+    description: "Names of command interfaces to claim",
+    read_only: true,
+    validation: {
+      unique<>: null,
+      subset_of<>: [["position"]]
+    }
+  }
+  state_interfaces: {
+    type: string_array,
+    default_value: [],
+    description: "Names of state interfaces to claim",
+    read_only: true,
+    validation: {
+      unique<>: null,
+      subset_of<>: [["position", "velocity", "acceleration",]]
+    }
+  }
+  allow_partial_joints_goal: {
+    type: bool,
+    default_value: false,
+    description: "Goals with partial set of joints are allowed",
+  }
+  state_publish_rate: {
+    type: double,
+    default_value: 50.0,
+    description: "Rate controller state is published",
+    validation: {
+      gt_eq: [0.1]
+    }
+  }
+  action_monitor_rate: {
+    type: double,
+    default_value: 20.0,
+    description: "Rate status changes will be monitored",
+    read_only: true,
+    validation: {
+      gt_eq: [0.1]
+    }
+  }
+  gains:
+    __map_joints:
+      angle_wraparound: {
+        type: bool,
+        default_value: false,
+        description: "For joints that wrap around (ie. are continuous).
+          Normalizes position-error to -pi to pi."
+      }
+  constraints:
+    stopped_velocity_tolerance: {
+      type: double,
+      default_value: 0.01,
+      description: "Velocity tolerance for at the end of the trajectory that indicates that controlled system is stopped.",
+    }
+    __map_joints:
+      waypoint: {
+        type: double,
+        default_value: 0.0,
+        description: "Per-joint waypoint tolerance during movement.",
+      }
