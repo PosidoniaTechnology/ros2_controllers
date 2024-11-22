@@ -96,13 +96,12 @@ JointTrajectoryController::command_interface_configuration() const
     }
   }
 
-  // declare command interfaces for `desired` values
+  // declare command interfaces for `desired` values, these are calculated every loop
   for (const auto & joint_name : params_.joints)
-  {                              // NOTE THIS! state, not command interface names
-    for (const auto & interface_type : params_.state_interfaces)
-    {
-      conf.names.push_back(joint_name + "/desired/" + interface_type);
-    }
+  {
+    conf.names.push_back(joint_name + "/desired/position");
+    conf.names.push_back(joint_name + "/desired/velocity");
+    conf.names.push_back(joint_name + "/desired/acceleration");
   }
   
   return conf;
