@@ -95,7 +95,7 @@ JointTrajectoryController::command_interface_configuration() const
       conf.names.push_back(joint_name + "/" + interface_type);
     }
   }
-  /**/
+
   // declare command interfaces for `desired` values
   for (const auto & joint_name : params_.joints)
   {                              // NOTE THIS! state, not command interface names
@@ -119,15 +119,6 @@ JointTrajectoryController::state_interface_configuration() const
     for (const auto & interface_type : params_.state_interfaces)
     {
       conf.names.push_back(joint_name + "/" + interface_type);
-    }
-  }
-
-  // declare state interfaces for `desired` values
-  for (const auto & joint_name : params_.joints)
-  {
-    for (const auto & interface_type : params_.state_interfaces)
-    {
-      conf.names.push_back(joint_name + "/desired/" + interface_type);
     }
   }
   
@@ -989,11 +980,6 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
     "desired/acceleration"
   });
   std::vector<std::string> state_interface_list = params_.state_interfaces;
-  state_interface_list.insert(state_interface_list.end(), {
-    "desired/position",
-    "desired/velocity",
-    "desired/acceleration"
-  });
 
   for (const auto & interface : command_interface_list)
   {
