@@ -44,6 +44,8 @@
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 
+#include "lock_free_rt_publisher/lock_free_rt_publisher.hpp"
+
 #include "joint_trajectory_controller_parameters.hpp"
 
 using namespace std::chrono_literals;  // NOLINT
@@ -184,6 +186,10 @@ protected:
   StatePublisherPtr state_publisher_legacy_;
   rclcpp::Publisher<ControllerStateMsg>::SharedPtr publisher_;
   StatePublisherPtr state_publisher_;
+
+  using LockFreeStatePublisher = lock_free_rt_publisher::LockFreeRTPublisher<ControllerStateMsg>;
+  using LockFreeStatePublisherPtr = std::unique_ptr<LockFreeStatePublisher>;
+  LockFreeStatePublisherPtr state_publisher_lock_free_;
 
   rclcpp::Duration state_publisher_period_ = rclcpp::Duration(20ms);
   rclcpp::Time last_state_publish_time_;

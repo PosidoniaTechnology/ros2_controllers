@@ -19,6 +19,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     rsl
     tl_expected
     trajectory_msgs
+    lock_free_rt_publisher
 )
 
 find_package(ament_cmake REQUIRED)
