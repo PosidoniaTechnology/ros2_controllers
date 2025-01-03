@@ -1148,7 +1148,7 @@ void JointTrajectoryController::publish_state(
   }
 
   if(!state_publisher_lock_free_->try_push(msg)){
-    std::cout<<"queue at capacity!"<<std::endl;
+    RCLCPP_WARN_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000/*ms*/, "Publisher queue at capacity, dropping messages...");
   }
   
 }
