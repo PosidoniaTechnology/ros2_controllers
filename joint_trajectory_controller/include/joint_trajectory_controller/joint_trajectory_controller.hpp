@@ -188,8 +188,7 @@ protected:
   StatePublisherPtr state_publisher_;
 
   using LockFreeStatePublisher = lock_free_rt_publisher::LockFreeRTPublisher<ControllerStateMsg>;
-  using LockFreeStatePublisherPtr = std::unique_ptr<LockFreeStatePublisher>;
-  LockFreeStatePublisherPtr state_publisher_lock_free_;
+  std::unique_ptr<LockFreeStatePublisher> state_publisher_lock_free_;
 
   rclcpp::Duration state_publisher_period_ = rclcpp::Duration(20ms);
   rclcpp::Time last_state_publish_time_;

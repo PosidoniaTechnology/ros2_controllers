@@ -17,6 +17,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <iostream>
 
 #include <string>
 #include <vector>
@@ -871,42 +872,10 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
 
   publisher_ = get_node()->create_publisher<ControllerStateMsg>(
     "~/controller_state", rclcpp::SystemDefaultsQoS());
-  state_publisher_ = std::make_unique<StatePublisher>(publisher_);
-
-  state_publisher_->lock();
-  state_publisher_->msg_.joint_names = params_.joints;
-  state_publisher_->msg_.reference.positions.resize(dof_);
-  state_publisher_->msg_.reference.velocities.resize(dof_);
-  state_publisher_->msg_.reference.accelerations.resize(dof_);
-  state_publisher_->msg_.feedback.positions.resize(dof_);
-  state_publisher_->msg_.error.positions.resize(dof_);
-  if (has_velocity_state_interface_)
-  {
-    state_publisher_->msg_.feedback.velocities.resize(dof_);
-    state_publisher_->msg_.error.velocities.resize(dof_);
-  }
-  if (has_acceleration_state_interface_)
-  {
-    state_publisher_->msg_.feedback.accelerations.resize(dof_);
-    state_publisher_->msg_.error.accelerations.resize(dof_);
-  }
-  if (has_position_command_interface_)
-  {
-    state_publisher_->msg_.output.positions.resize(dof_);
-  }
-  if (has_velocity_command_interface_)
-  {
-    state_publisher_->msg_.output.velocities.resize(dof_);
-  }
-  if (has_acceleration_command_interface_)
-  {
-    state_publisher_->msg_.output.accelerations.resize(dof_);
-  }
-  if (has_effort_command_interface_)
-  {
-    state_publisher_->msg_.output.effort.resize(dof_);
-  }
-  state_publisher_->unlock();
+  state_publisher_lock_free_ = std::make_unique<LockFreeStatePublisher>(
+    publisher_,
+    static_cast<size_t>(100), // queue size
+    12'000); // polling frequency 83hz
 
   last_state_publish_time_ = get_node()->now();
 
@@ -1148,68 +1117,40 @@ void JointTrajectoryController::publish_state(
     return;
   }
 
-  if (state_publisher_legacy_ && state_publisher_legacy_->trylock())
+  ControllerStateMsg msg;
+  last_state_publish_time_ = get_node()->now();
+  msg.joint_names = params_.joints;
+  msg.header.stamp = last_state_publish_time_;
+  msg.reference.positions = desired_state.positions;
+  msg.reference.velocities = desired_state.velocities;
+  msg.reference.accelerations = desired_state.accelerations;
+  msg.feedback.positions = current_state.positions;
+  // DESIRED and ACTUAL are deprecated in the message but we are still
+  // reporting on them
+  msg.desired.positions = desired_state.positions;
+  msg.desired.velocities = desired_state.velocities;
+  msg.desired.accelerations = desired_state.accelerations;
+  msg.actual.positions = current_state.positions;
+  msg.error.positions = state_error.positions;
+  if (has_velocity_state_interface_)
   {
-    last_state_publish_time_ = get_node()->now();
-    state_publisher_legacy_->msg_.header.stamp = last_state_publish_time_;
-    state_publisher_legacy_->msg_.desired.positions = desired_state.positions;
-    state_publisher_legacy_->msg_.desired.velocities = desired_state.velocities;
-    state_publisher_legacy_->msg_.desired.accelerations = desired_state.accelerations;
-    state_publisher_legacy_->msg_.actual.positions = current_state.positions;
-    state_publisher_legacy_->msg_.error.positions = state_error.positions;
-    if (has_velocity_state_interface_)
-    {
-      state_publisher_legacy_->msg_.actual.velocities = current_state.velocities;
-      state_publisher_legacy_->msg_.error.velocities = state_error.velocities;
-    }
-    if (has_acceleration_state_interface_)
-    {
-      state_publisher_legacy_->msg_.actual.accelerations = current_state.accelerations;
-      state_publisher_legacy_->msg_.error.accelerations = state_error.accelerations;
-    }
-
-    state_publisher_legacy_->unlockAndPublish();
-
-    if (publisher_legacy_->get_subscription_count())
-    {
-      RCLCPP_WARN_THROTTLE(
-        get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "Subscription to deprecated ~/state topic. Use ~/controller_state instead.");
-    }
+    msg.feedback.velocities = current_state.velocities;
+    msg.error.velocities = state_error.velocities;
+  }
+  if (has_acceleration_state_interface_)
+  {
+    msg.feedback.accelerations = current_state.accelerations;
+    msg.error.accelerations = state_error.accelerations;
+  }
+  if (read_commands_from_command_interfaces(command_current_))
+  {
+    msg.output = command_current_;
   }
 
-  if (state_publisher_ && state_publisher_->trylock())
-  {
-    last_state_publish_time_ = get_node()->now();
-    state_publisher_->msg_.header.stamp = last_state_publish_time_;
-    state_publisher_->msg_.reference.positions = desired_state.positions;
-    state_publisher_->msg_.reference.velocities = desired_state.velocities;
-    state_publisher_->msg_.reference.accelerations = desired_state.accelerations;
-    state_publisher_->msg_.feedback.positions = current_state.positions;
-    // DESIRED and ACTUAL are deprecated in the message but we are still
-    // reporting on them
-    state_publisher_legacy_->msg_.desired.positions = desired_state.positions;
-    state_publisher_legacy_->msg_.desired.velocities = desired_state.velocities;
-    state_publisher_legacy_->msg_.desired.accelerations = desired_state.accelerations;
-    state_publisher_legacy_->msg_.actual.positions = current_state.positions;
-    state_publisher_->msg_.error.positions = state_error.positions;
-    if (has_velocity_state_interface_)
-    {
-      state_publisher_->msg_.feedback.velocities = current_state.velocities;
-      state_publisher_->msg_.error.velocities = state_error.velocities;
-    }
-    if (has_acceleration_state_interface_)
-    {
-      state_publisher_->msg_.feedback.accelerations = current_state.accelerations;
-      state_publisher_->msg_.error.accelerations = state_error.accelerations;
-    }
-    if (read_commands_from_command_interfaces(command_current_))
-    {
-      state_publisher_->msg_.output = command_current_;
-    }
-
-    state_publisher_->unlockAndPublish();
+  if(!state_publisher_lock_free_->try_push(msg)){
+    std::cout<<"queue at capacity!"<<std::endl;
   }
+  
 }
 
 void JointTrajectoryController::topic_callback(
